@@ -6,6 +6,8 @@
  * tient la promesse low-cost : tout ce qu'il rejette ici n'est jamais facturé.
  */
 
+import { DEFAULT_LOCALE, type Locale } from '../i18n/locale.ts';
+import { messages } from '../i18n/messages.ts';
 import {
   classifySourcePath,
   compareSeverity,
@@ -161,6 +163,8 @@ export interface AggregateOptions {
   bypassClaudeForHighConfidence?: boolean;
   /** Nombre de routes analysées durant le run, pour le vrai pourcentage. */
   routesAnalyzed?: number;
+  /** Langue des résumés produits. */
+  locale?: Locale;
 }
 
 // Seuils — CLAUDE.md §3.
@@ -201,13 +205,17 @@ function locationKey(finding: AggregatedFinding): string {
   return [finding.http_method.toUpperCase(), finding.route, finding.file, finding.line ?? '?'].join('|');
 }
 
-function summarizeGroup(group: Omit<LocationGroup, 'plain_language_summary'>): string {
+function summarizeGroup(
+  group: Omit<LocationGroup, 'plain_language_summary'>,
+  locale: Locale
+): string {
+  const t = messages(locale).aggregator;
   const location = `${group.http_method} ${group.route}`;
   if (group.vulnerabilities.length === 1) {
     return group.vulnerabilities[0]!.plain_language_summary;
   }
-  const names = group.vulnerabilities.map((v) => v.vulnerability).join(' et ');
-  return `Sur ${location}, ${group.vulnerabilities.length} problèmes différents ont été repérés au même endroit du code (${names}). Chacun se corrige séparément : régler l'un ne règle pas l'autre.`;
+  const names = group.vulnerabilities.map((v) => v.vulnerability).join(t.and);
+  return t.multipleAtSameLocation(location, group.vulnerabilities.length, names);
 }
 
 /** Point d'entrée. Aucun appel réseau, aucun LLM, résultat reproductible. */
@@ -216,6 +224,7 @@ export function aggregate(
   options: AggregateOptions = {}
 ): AggregationResult {
   const bypass = options.bypassClaudeForHighConfidence ?? false;
+  const locale = options.locale ?? DEFAULT_LOCALE;
 
   const stats: RunStats = {
     total_received: findings.length,
@@ -332,7 +341,7 @@ export function aggregate(
       max_confidence: Math.max(...sorted.map((v) => v.confidence_score)),
       vulnerabilities: sorted,
     };
-    return { ...partial, plain_language_summary: summarizeGroup(partial) };
+    return { ...partial, plain_language_summary: summarizeGroup(partial, locale) };
   });
 
   // Tri déterministe : sans le départage final sur la route, deux runs
@@ -351,47 +360,31 @@ export function aggregate(
     direct_alerts: directAlerts,
     rejected,
     stats,
-    plain_language_summary: summarizeRun(stats, groups),
+    plain_language_summary: summarizeRun(stats, groups, locale),
   };
 }
 
 /** CLAUDE.md §4 : même l'agrégateur, qui ne parle qu'à des machines, s'explique. */
-function summarizeRun(stats: RunStats, groups: LocationGroup[]): string {
-  if (stats.total_received === 0) {
-    return "Aucun problème de sécurité n'a été remonté par les détecteurs sur ce scan.";
-  }
+function summarizeRun(stats: RunStats, groups: LocationGroup[], locale: Locale): string {
+  const t = messages(locale).aggregator;
+  if (stats.total_received === 0) return t.nothingReported;
 
   const parts: string[] = [];
   const retained = groups.reduce((sum, group) => sum + group.vulnerabilities.length, 0);
 
-  parts.push(
-    `${stats.total_received} signalement(s) reçu(s) des détecteurs, ${retained} retenu(s) après nettoyage.`
-  );
+  parts.push(t.received(stats.total_received, retained));
 
   if (stats.excluded_non_production > 0) {
-    parts.push(
-      `${stats.excluded_non_production} concernaient des fichiers de test ou de démonstration, pas du code réellement en ligne : écartés.`
-    );
+    parts.push(t.excludedNonProduction(stats.excluded_non_production));
   }
-  if (stats.merged_duplicates > 0) {
-    parts.push(
-      `${stats.merged_duplicates} faisaient doublon avec un signalement identique et ont été regroupés.`
-    );
-  }
+  if (stats.merged_duplicates > 0) parts.push(t.mergedDuplicates(stats.merged_duplicates));
   if (stats.rejected_low_confidence > 0) {
-    parts.push(
-      `${stats.rejected_low_confidence} se sont révélés sans danger après vérification et n'apparaissent pas dans le rapport.`
-    );
+    parts.push(t.rejectedLowConfidence(stats.rejected_low_confidence));
   }
 
   const critical = groups.filter((g) => g.severity === 'critical' || g.severity === 'high').length;
-  if (critical > 0) {
-    parts.push(
-      `${critical} point(s) demandent votre attention en priorité : ce sont ceux qui exposent le plus de données si quelqu'un les exploite.`
-    );
-  } else if (retained > 0) {
-    parts.push('Aucun point critique : les éléments retenus sont de gravité modérée.');
-  }
+  if (critical > 0) parts.push(t.criticalCount(critical));
+  else if (retained > 0) parts.push(t.noCritical);
 
   return parts.join(' ');
 }

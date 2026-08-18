@@ -154,11 +154,11 @@ describe('Suivi de consommation', () => {
     const report = tracker.report();
     expect(report.totals.cost_usd).toBeNull();
     expect(report.totals.cost_partial).toBe(true);
-    expect(report.plain_language_summary).toContain("coût n'est pas communiqué");
+    expect(report.plain_language_summary).toContain('does not report cost');
   });
 
   it('dit clairement quand aucun appel IA n a eu lieu', () => {
-    expect(new UsageTracker().report().plain_language_summary).toContain('aucune intelligence artificielle');
+    expect(new UsageTracker().report().plain_language_summary).toContain('no artificial intelligence');
   });
 });
 
@@ -184,7 +184,7 @@ describe('Sélection des routes selon le mode', () => {
     expect(result.effectiveMode).toBe('full_scan');
     // Un incrémental dégradé en complet fait exploser la facture sans
     // prévenir : la dégradation doit être annoncée, jamais silencieuse.
-    expect(result.note).toContain('tout le projet a été réanalysé');
+    expect(result.note).toContain('the whole project was analyzed');
   });
 
   it('retombe en full_scan et le DIT si le diff est incalculable', () => {
@@ -194,7 +194,7 @@ describe('Sélection des routes selon le mode', () => {
       index
     );
     expect(result.effectiveMode).toBe('full_scan');
-    expect(result.note).toContain('non versionné ou commit introuvable');
+    expect(result.note).toContain('not under version control, or unknown commit');
   });
 });
 
@@ -356,11 +356,15 @@ describe('Webhook', () => {
     });
   }
 
-  it('refuse une demande sans repo_path, en expliquant pourquoi', async () => {
+  it('refuse une demande sans cible, en expliquant pourquoi', async () => {
     const server = makeServer();
     const response = await call(server, 'POST', '/webhook', { mode: 'full_scan' });
     expect(response.status).toBe(400);
-    expect(response.json.plain_language_summary).toContain('dossier du projet');
+    // Le message énumère les trois formes acceptées : un utilisateur qui ne
+    // sait pas quoi coller doit lire la réponse, pas la documentation.
+    expect(response.json.plain_language_summary).toContain('folder');
+    expect(response.json.plain_language_summary).toContain('file');
+    expect(response.json.plain_language_summary).toContain('GitHub');
   });
 
   it('refuse un mode inconnu', async () => {
@@ -404,7 +408,7 @@ describe('Webhook', () => {
     const server = makeServer();
     const response = await call(server, 'POST', '/providers', { nodeProvider: 'anthropic' });
     expect(response.status).toBe(400);
-    expect(response.json.plain_language_summary).toContain("clé d'accès");
+    expect(response.json.plain_language_summary).toContain('access key is missing');
     expect(server.settings.nodeProvider).toBe('gemini');
   });
 

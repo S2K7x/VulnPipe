@@ -7,6 +7,8 @@
  * réseau.
  */
 
+import { DEFAULT_LOCALE, type Locale } from '../i18n/locale.ts';
+import { messages } from '../i18n/messages.ts';
 import type { AggregationResult, AggregatedFinding } from '../aggregator/aggregator.ts';
 import type { Severity } from '../aggregator/severity-rules.ts';
 import { compareSeverity } from '../aggregator/severity-rules.ts';
@@ -96,7 +98,11 @@ export function containsCodePatch(text: string): boolean {
 }
 
 /** Remplace un patch détecté par une consigne, sans perdre l'information. */
-function stripCodePatch(text: string, field: string): { text: string; stripped: boolean } {
+function stripCodePatch(
+  text: string,
+  field: string,
+  locale: Locale
+): { text: string; stripped: boolean } {
   if (!containsCodePatch(text)) return { text, stripped: false };
   const withoutFences = text
     .replace(/```[\s\S]*?```/g, '')
@@ -107,7 +113,7 @@ function stripCodePatch(text: string, field: string): { text: string; stripped: 
     text:
       withoutFences.length > 30
         ? withoutFences
-        : `La correction doit être décidée et écrite par un développeur : ce champ (${field}) contenait un extrait de code, retiré volontairement car un correctif appliqué sans relecture est un risque en soi.`,
+        : messages(locale).report.patchStripped(field),
     stripped: true,
   };
 }
@@ -117,6 +123,8 @@ export interface BuildReportOptions {
   routesAnalyzed?: number;
   /** Routes dont l'analyse a échoué : une couverture partielle doit se voir. */
   routesFailed?: number;
+  /** Langue du rapport. */
+  locale?: Locale;
 }
 
 /** Assemble le rapport final à partir du résultat d'agrégation et de l'arbitrage. */
@@ -125,6 +133,9 @@ export function buildReport(
   arbitration: ArbitrationOutcome,
   options: BuildReportOptions = {}
 ): SecurityReport {
+  const locale = options.locale ?? DEFAULT_LOCALE;
+  const t = messages(locale).report;
+
   // Le payload soumis à l'arbitre = tout ce que l'Agrégateur a retenu.
   const candidates: AggregatedFinding[] = [...aggregation.claude_payload, ...aggregation.direct_alerts];
 
@@ -156,7 +167,12 @@ export function buildReport(
         line: finding.line,
         claude_verdict: 'needs_human_review',
         claude_reasoning: `Non vérifié par l'arbitre (${why}). Le verdict affiché est celui du détecteur automatique seul.`,
-        technical_summary: `${finding.vulnerability} suspecté sur ${finding.http_method} ${finding.route} (score du détecteur : ${finding.confidence_score}).`,
+        technical_summary: t.suspected(
+          finding.vulnerability,
+          finding.http_method,
+          finding.route,
+          finding.confidence_score
+        ),
         plain_language_summary: finding.plain_language_summary,
         suggested_fix_direction:
           'À faire vérifier par une personne : la seconde relecture automatique n’a pas pu avoir lieu.',
@@ -181,8 +197,8 @@ export function buildReport(
     }
 
     // --- Cas 3 : confirmé ou à faire revoir -------------------------------
-    const fix = stripCodePatch(verdict.suggested_fix_direction, 'suggested_fix_direction');
-    const plain = stripCodePatch(verdict.plain_language_summary, 'plain_language_summary');
+    const fix = stripCodePatch(verdict.suggested_fix_direction, 'suggested_fix_direction', locale);
+    const plain = stripCodePatch(verdict.plain_language_summary, 'plain_language_summary', locale);
     if (fix.stripped || plain.stripped) strippedPatches += 1;
 
     findings.push({
@@ -224,7 +240,7 @@ export function buildReport(
     warning,
     dismissed_by_arbiter: dismissed.length,
     not_arbitrated: notArbitrated,
-    plain_language_intro: buildIntro({
+    plain_language_intro: buildIntro(locale, {
       critical,
       warning,
       dismissed: dismissed.length,
@@ -250,7 +266,7 @@ export function buildReport(
   };
 }
 
-function buildIntro(input: {
+function buildIntro(locale: Locale, input: {
   critical: number;
   warning: number;
   dismissed: number;
@@ -259,46 +275,23 @@ function buildIntro(input: {
   routesAnalyzed?: number;
   routesFailed?: number;
 }): string {
+  const t = messages(locale).report;
   const total = input.critical + input.warning;
   const parts: string[] = [];
 
-  if (total === 0) {
-    parts.push("Bonne nouvelle : aucun point d'attention n'a été retenu dans ton code sur ce scan.");
-  } else if (input.critical > 0) {
-    parts.push(
-      `On a trouvé ${total} point${total > 1 ? 's' : ''} d'attention dans ton code, dont ${input.critical} qui mérite${input.critical > 1 ? 'nt' : ''} une correction rapide.`
-    );
-  } else {
-    parts.push(
-      `On a trouvé ${total} point${total > 1 ? 's' : ''} d'attention dans ton code. Rien d'urgent, mais ça vaut le coup d'y jeter un œil.`
-    );
-  }
+  if (total === 0) parts.push(t.allClear);
+  else if (input.critical > 0) parts.push(t.foundWithCritical(total, input.critical));
+  else parts.push(t.foundNonUrgent(total));
 
-  if (input.dismissed > 0) {
-    parts.push(
-      `${input.dismissed} autre${input.dismissed > 1 ? 's' : ''} signalement${input.dismissed > 1 ? 's ont' : ' a'} été examiné${input.dismissed > 1 ? 's' : ''} puis écarté${input.dismissed > 1 ? 's' : ''} : après relecture, ${input.dismissed > 1 ? 'ce sont' : "c'est"} de fausse${input.dismissed > 1 ? 's' : ''} alerte${input.dismissed > 1 ? 's' : ''}.`
-    );
-  }
+  if (input.dismissed > 0) parts.push(t.dismissed(input.dismissed));
 
   // La couverture partielle doit être dite, jamais déduite d'une absence.
-  if (input.notArbitrated > 0) {
-    parts.push(
-      `Attention : ${input.notArbitrated} point${input.notArbitrated > 1 ? 's n\'ont' : " n'a"} pas pu être revérifié${input.notArbitrated > 1 ? 's' : ''} par la seconde relecture. ${input.notArbitrated > 1 ? 'Ils sont' : 'Il est'} affiché${input.notArbitrated > 1 ? 's' : ''} tel${input.notArbitrated > 1 ? 's' : ''} quel${input.notArbitrated > 1 ? 's' : ''}, à faire confirmer par une personne.`
-    );
-  }
-  if (input.routesFailed && input.routesFailed > 0) {
-    parts.push(
-      `${input.routesFailed} adresse${input.routesFailed > 1 ? 's' : ''} de ton application n'${input.routesFailed > 1 ? 'ont' : 'a'} pas pu être analysée${input.routesFailed > 1 ? 's' : ''} : ce scan est incomplet.`
-    );
-  } else if (input.routesAnalyzed) {
-    parts.push(`${input.routesAnalyzed} adresses de ton application ont été passées en revue.`);
-  }
+  if (input.notArbitrated > 0) parts.push(t.notArbitrated(input.notArbitrated));
 
-  if (input.strippedPatches > 0) {
-    parts.push(
-      'Les corrections sont décrites en mots, pas en code : un correctif appliqué sans relecture est un risque en soi.'
-    );
-  }
+  if (input.routesFailed && input.routesFailed > 0) parts.push(t.routesFailed(input.routesFailed));
+  else if (input.routesAnalyzed) parts.push(t.coverage(input.routesAnalyzed));
+
+  if (input.strippedPatches > 0) parts.push(t.patchesDescribedInWords);
 
   return parts.join(' ');
 }

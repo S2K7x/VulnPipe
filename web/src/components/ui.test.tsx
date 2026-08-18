@@ -13,7 +13,9 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, within } from '@testing-library/react';
+import { screen, cleanup, within } from '@testing-library/react';
+
+import { render, renderIn } from '../test-utils.tsx';
 import { userEvent } from '@testing-library/user-event';
 
 import { ScanTimeline, reduceEvents, type StepEvent } from './ScanTimeline.tsx';
@@ -22,7 +24,13 @@ import { UsagePanel, formatCost } from './UsagePanel.tsx';
 import { ProviderSwitcher } from './ProviderSwitcher.tsx';
 import { PipelineExplainer } from './PipelineExplainer.tsx';
 import { ScanLauncher } from './ScanLauncher.tsx';
-import { GLOSSARY, STEP_ORDER, STEP_TRANSLATIONS, translateStep } from '../lib/step_translations.ts';
+import { STEP_ORDER, stepTranslations, translateStep } from '../lib/step_translations.ts';
+import { dictionary } from '../i18n/dictionary.ts';
+
+// Le catalogue anglais sert de référence aux tests : c'est la langue par
+// défaut du produit, donc celle que voit quelqu'un qui n'a rien réglé.
+const STEP_TRANSLATIONS = stepTranslations('en');
+const GLOSSARY = dictionary('en').glossary;
 
 afterEach(cleanup);
 
@@ -76,9 +84,12 @@ describe('ScanTimeline', () => {
     );
 
     const items = screen.getAllByRole('listitem').map((node) => node.textContent ?? '');
-    const positions = ['Demande reçue', 'Lecture de ton code', 'Recherche de failles', 'Tri des résultats'].map(
-      (label) => items.findIndex((text) => text.includes(label))
-    );
+    const positions = [
+      'Request received',
+      'Reading your code',
+      'Hunting for holes',
+      'Sorting the results',
+    ].map((label) => items.findIndex((text) => text.includes(label)));
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     expect(positions.every((p) => p >= 0)).toBe(true);
   });
@@ -87,15 +98,20 @@ describe('ScanTimeline', () => {
     render(
       <ScanTimeline
         events={STEP_ORDER.map((step, index) =>
-          event({ seq: index, step, status: 'running', plain_language: translateStep(step, 'running') })
+          event({
+            seq: index,
+            step,
+            status: 'running',
+            plain_language: translateStep(step, 'running', 'en'),
+          })
         )}
       />
     );
     const text = document.body.textContent ?? '';
-    for (const jargon of ['Node IDOR', 'running', 'MCP', 'aggregator', 'LLM', 'payload']) {
+    for (const jargon of ['Node IDOR', 'MCP', 'aggregator', 'LLM', 'payload']) {
       expect(text).not.toContain(jargon);
     }
-    expect(text).toContain("On vérifie que personne ne peut consulter les données d'un autre utilisateur");
+    expect(text).toContain("nobody can read another user's data");
   });
 
   it("n'efface jamais un échec avec un succès plus tardif", () => {
@@ -123,7 +139,7 @@ describe('ScanTimeline', () => {
         ]}
       />
     );
-    expect(screen.getByText('3 sur 7')).toBeTruthy();
+    expect(screen.getByText('3 of 7')).toBeTruthy();
   });
 
   it('garde le détail technique replié par défaut', async () => {
@@ -143,13 +159,13 @@ describe('ScanTimeline', () => {
     );
 
     expect(screen.queryByText(/LlmError/)).toBeNull();
-    await userEvent.click(screen.getByRole('button', { name: /Voir le détail technique/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Show technical detail/ }));
     expect(screen.getByText(/LlmError/)).toBeTruthy();
   });
 
   it('affiche un message d attente quand aucun événement n est encore arrivé', () => {
     render(<ScanTimeline events={[]} />);
-    expect(screen.getByText(/L'analyse va démarrer/)).toBeTruthy();
+    expect(screen.getByText(/The analysis is about to start/)).toBeTruthy();
   });
 });
 
@@ -183,7 +199,7 @@ describe('ReportView', () => {
     expect(
       screen.getByText(/N'importe qui peut voir les commandes d'un autre client/)
     ).toBeTruthy();
-    expect(screen.getByText('À corriger vite')).toBeTruthy();
+    expect(screen.getByText('Fix soon')).toBeTruthy();
   });
 
   it('garde le détail technique REPLIÉ par défaut, et accessible au clic', async () => {
@@ -193,7 +209,7 @@ describe('ReportView', () => {
     expect(screen.queryByText(/findById\(id\) sans filtre userId/)).toBeNull();
     expect(screen.queryByText(/order.controller.ts/)).toBeNull();
 
-    const toggle = screen.getByRole('button', { name: /Voir le détail technique/ });
+    const toggle = screen.getByRole('button', { name: /Show technical detail/ });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
 
     await userEvent.click(toggle);
@@ -207,7 +223,7 @@ describe('ReportView', () => {
     // Replié : aucun sigle visible du tout.
     expect(document.body.textContent).not.toContain('IDOR');
 
-    await userEvent.click(screen.getByRole('button', { name: /Voir le détail technique/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Show technical detail/ }));
     // Déplié : le sigle apparaît, mais accompagné de sa traduction.
     const article = screen.getByRole('article');
     expect(within(article).getByText('IDOR')).toBeTruthy();
@@ -216,18 +232,18 @@ describe('ReportView', () => {
 
   it('remplace un terme absent du glossaire plutôt que de montrer un sigle opaque', () => {
     render(<VulnerabilityName name="XXE" />);
-    expect(screen.getByText('Problème de sécurité')).toBeTruthy();
+    expect(screen.getByText('Security issue')).toBeTruthy();
     expect(document.body.textContent).not.toContain('XXE');
   });
 
   it('prévient quand un point n a pas été revérifié', () => {
     render(<FindingCard finding={{ ...IDOR_FINDING, evidence: 'not_arbitrated' }} />);
-    expect(screen.getByRole('note').textContent).toContain("n'a pas pu être revérifié");
+    expect(screen.getByRole('note').textContent).toContain('could not be double-checked');
   });
 
   it('prévient quand la seconde relecture n a pas tranché', () => {
     render(<FindingCard finding={{ ...IDOR_FINDING, claude_verdict: 'needs_human_review' }} />);
-    expect(screen.getByRole('note').textContent).toContain('vérification humaine');
+    expect(screen.getByRole('note').textContent).toContain('human check is needed');
   });
 
   it('dit clairement quand il n y a rien à signaler', () => {
@@ -295,18 +311,26 @@ describe('UsagePanel', () => {
 
   it('affiche le coût et le volume, résumé replié par défaut', async () => {
     render(<UsagePanel usage={usage} />);
-    expect(screen.getByText('gratuit')).toBeTruthy();
+    expect(screen.getByText('free')).toBeTruthy();
     expect(screen.getByText('5')).toBeTruthy();
 
     expect(screen.queryByText('Par étape')).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: /Voir le détail/ }));
-    expect(screen.getByText('Par étape')).toBeTruthy();
-    expect(screen.getByText('Recherche de failles')).toBeTruthy();
+    expect(screen.getByText('By step')).toBeTruthy();
+    expect(screen.getByText('Hunting for holes')).toBeTruthy();
   });
 
   it('dit « non communiqué » plutôt que d inventer un coût', () => {
-    expect(formatCost({ ...usage.totals, cost_usd: null })).toBe('non communiqué par le fournisseur');
-    expect(formatCost({ ...usage.totals, cost_usd: 0.0123, cost_partial: true })).toContain('partiel');
+    // Un coût que le fournisseur ne donne pas s'affiche comme inconnu, jamais
+    // comme « 0 $ » : ce serait présenter une absence d'information comme une
+    // gratuité, à quelqu'un qui va pourtant payer.
+    const en = dictionary('en');
+    expect(formatCost({ ...usage.totals, cost_usd: null }, en)).toBe(
+      'not reported by the provider'
+    );
+    expect(formatCost({ ...usage.totals, cost_usd: 0.0123, cost_partial: true }, en)).toContain(
+      'partial'
+    );
   });
 
   it('explique le poste « réflexion », le plus opaque de la facture', async () => {
@@ -330,8 +354,8 @@ describe('ProviderSwitcher', () => {
 
   it('propose un fournisseur distinct pour les détecteurs et pour la relecture', () => {
     render(<ProviderSwitcher settings={settings} available={available} onChange={() => {}} />);
-    expect(screen.getByLabelText(/Pour parcourir ton code/)).toBeTruthy();
-    expect(screen.getByLabelText(/Pour la seconde relecture/)).toBeTruthy();
+    expect(screen.getByLabelText(/Hunting for holes/)).toBeTruthy();
+    expect(screen.getByLabelText(/Second opinion/)).toBeTruthy();
   });
 
   it('désactive un fournisseur sans clé au lieu de le masquer, et dit pourquoi', () => {
@@ -345,10 +369,10 @@ describe('ProviderSwitcher', () => {
     const onChange = vi.fn();
     render(<ProviderSwitcher settings={settings} available={available} onChange={onChange} />);
 
-    const apply = screen.getByRole('button', { name: 'Appliquer' });
+    const apply = screen.getByRole('button', { name: 'Apply' });
     expect(apply.hasAttribute('disabled')).toBe(true);
 
-    await userEvent.selectOptions(screen.getByLabelText(/Pour parcourir ton code/), 'openrouter');
+    await userEvent.selectOptions(screen.getByLabelText(/Hunting for holes/), 'openrouter');
     expect(apply.hasAttribute('disabled')).toBe(false);
 
     await userEvent.click(apply);
@@ -357,14 +381,14 @@ describe('ProviderSwitcher', () => {
 
   it('propose les modèles gratuits pour OpenRouter', async () => {
     render(<ProviderSwitcher settings={settings} available={available} onChange={() => {}} />);
-    await userEvent.selectOptions(screen.getByLabelText(/Pour parcourir ton code/), 'openrouter');
+    await userEvent.selectOptions(screen.getByLabelText(/Hunting for holes/), 'openrouter');
     const options = document.querySelectorAll('#vp-node-provider-suggestions option');
     expect([...options].map((o) => o.getAttribute('value'))).toContain('openrouter/free');
   });
 
   it('fige le réglage pendant un scan', () => {
     render(<ProviderSwitcher settings={settings} available={available} onChange={() => {}} disabled />);
-    expect(screen.getByText(/Un scan est en cours/)).toBeTruthy();
+    expect(screen.getByText(/A scan is running/)).toBeTruthy();
   });
 });
 
@@ -383,20 +407,20 @@ describe('PipelineExplainer', () => {
 
   it('accompagne chaque étape d une analogie du quotidien', () => {
     render(<PipelineExplainer />);
-    expect(screen.getByText(/Comme prendre un ticket en arrivant chez le médecin/)).toBeTruthy();
-    expect(screen.getByText(/Comme trier son courrier/)).toBeTruthy();
+    expect(screen.getByText(/Like taking a ticket when you walk into a waiting room/)).toBeTruthy();
+    expect(screen.getByText(/like sorting your mail/i)).toBeTruthy();
   });
 
   it('explique le modèle de coût, promesse n°1 du produit', () => {
     render(<PipelineExplainer />);
-    expect(screen.getByText(/Pourquoi ça ne coûte presque rien/)).toBeTruthy();
+    expect(screen.getByText(/Why this costs almost nothing/)).toBeTruthy();
   });
 
   it("met en avant l'étape en cours", () => {
     const { container } = render(<PipelineExplainer currentStep="detection" />);
     const current = container.querySelector('.vp-pipeline-step.vp-current');
-    expect(current?.textContent).toContain('Recherche de failles');
-    expect(current?.textContent).toContain('en cours');
+    expect(current?.textContent).toContain('Hunting for holes');
+    expect(current?.textContent).toContain('running');
   });
 
   it("n'emploie aucun terme technique dans les explications", () => {
@@ -418,7 +442,7 @@ describe('Timeline avec explications', () => {
     );
 
     expect(screen.queryByText(STEP_TRANSLATIONS.detection.why)).toBeNull();
-    await userEvent.click(screen.getByRole('button', { name: 'À quoi ça sert ?' }));
+    await userEvent.click(screen.getByRole('button', { name: 'What is this for?' }));
     expect(screen.getByText(STEP_TRANSLATIONS.detection.why)).toBeTruthy();
   });
 });
@@ -430,35 +454,54 @@ describe('Timeline avec explications', () => {
 describe('ScanLauncher', () => {
   it('pose des questions en français, sans vocabulaire technique', () => {
     render(<ScanLauncher onLaunch={() => {}} />);
-    expect(screen.getByText('Où se trouve ton projet ?')).toBeTruthy();
+    expect(screen.getByText('Which folder do you want to check?')).toBeTruthy();
     const text = document.body.textContent ?? '';
     for (const jargon of ['repo_path', 'full_scan', 'commit_sha', 'webhook', 'payload']) {
       expect(text).not.toContain(jargon);
     }
   });
 
-  it('refuse de lancer sans dossier, et explique pourquoi', async () => {
+  it('propose les trois formes de cible, dont le dépôt GitHub', async () => {
+    // Une capacité que rien n'annonce n'existe pas pour qui l'ignore : les
+    // trois onglets doivent être visibles sans avoir à deviner.
+    render(<ScanLauncher onLaunch={() => {}} />);
+    expect(screen.getByRole('tab', { name: /folder/i })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /single file/i })).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('tab', { name: /GitHub/i }));
+    expect(screen.getByText('Which repository do you want to check?')).toBeTruthy();
+  });
+
+  it("cache le choix de l'étendue sur un fichier seul", async () => {
+    // Comparer « ce qui a changé » n'a aucun sens quand la cible est un seul
+    // fichier : proposer l'option laisserait croire à un tri qui n'existe pas.
+    render(<ScanLauncher onLaunch={() => {}} />);
+    await userEvent.click(screen.getByRole('tab', { name: /single file/i }));
+    expect(screen.queryByLabelText(/Only what changed/)).toBeNull();
+  });
+
+  it('refuse de lancer sans cible, et explique pourquoi', async () => {
     const onLaunch = vi.fn();
     render(<ScanLauncher onLaunch={onLaunch} />);
-    await userEvent.click(screen.getByRole('button', { name: /Lancer l'analyse/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Estimate/ }));
     expect(onLaunch).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert').textContent).toContain('Indique le dossier');
+    expect(screen.getByRole('alert').textContent).toContain('Tell us what to analyze');
   });
 
   it('ne demande la version de départ que si le mode incrémental est choisi', async () => {
     render(<ScanLauncher onLaunch={() => {}} />);
-    expect(screen.queryByLabelText(/Depuis quelle version/)).toBeNull();
-    await userEvent.click(screen.getByLabelText(/Seulement ce qui a changé/));
-    expect(screen.getByLabelText(/Depuis quelle version/)).toBeTruthy();
+    expect(screen.queryByLabelText(/Since which version/)).toBeNull();
+    await userEvent.click(screen.getByLabelText(/Only what changed/));
+    expect(screen.getByLabelText(/Since which version/)).toBeTruthy();
   });
 
   it('transmet le mode choisi', async () => {
     const onLaunch = vi.fn();
     render(<ScanLauncher onLaunch={onLaunch} defaultPath="/tmp/projet" />);
-    await userEvent.click(screen.getByLabelText(/Seulement ce qui a changé/));
-    await userEvent.click(screen.getByRole('button', { name: /Lancer l'analyse/ }));
+    await userEvent.click(screen.getByLabelText(/Only what changed/));
+    await userEvent.click(screen.getByRole('button', { name: /Estimate/ }));
     expect(onLaunch).toHaveBeenCalledWith(
-      expect.objectContaining({ repoPath: '/tmp/projet', mode: 'incremental_scan' })
+      expect.objectContaining({ target: '/tmp/projet', mode: 'incremental_scan' })
     );
   });
 });

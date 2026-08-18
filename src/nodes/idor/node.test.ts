@@ -489,7 +489,9 @@ describe('Couche LLM enfichable', () => {
   });
 
   it('refuse clairement un fournisseur inconnu ou une clé absente', () => {
-    expect(() => createLlmClient({ VULNPIPE_LLM_PROVIDER: 'chatgpt-maison' })).toThrow(/inconnu/);
+    // Message technique : anglais uniquement, il finit dans un journal ou un
+    // moteur de recherche, jamais devant l'utilisateur cible.
+    expect(() => createLlmClient({ VULNPIPE_LLM_PROVIDER: 'chatgpt-maison' })).toThrow(/Unknown provider/);
     expect(() => createLlmClient({ VULNPIPE_LLM_PROVIDER: 'gemini', GEMINI_API_KEY: undefined })).toThrow(
       /GEMINI_API_KEY/
     );

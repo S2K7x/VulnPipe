@@ -9,13 +9,34 @@ import type { StepEvent } from '../components/ScanTimeline.tsx';
 import type { SecurityReport } from '../components/ReportView.tsx';
 import type { UsageReport } from '../components/UsagePanel.tsx';
 import type { ProviderAvailability, ProviderSettings } from '../components/ProviderSwitcher.tsx';
+import type { ScanEstimate } from '../components/EstimatePanel.tsx';
+import { getCurrentLocale } from '../i18n/context.tsx';
+import { dictionary } from '../i18n/dictionary.ts';
+
+/** Messages du client HTTP, dans la langue courante. */
+const errors = () => dictionary(getCurrentLocale()).errors;
 
 const BASE = import.meta.env?.VITE_API_URL ?? '';
 
 export interface LaunchResponse {
   run_id: string;
   events_url: string;
+  estimate: ScanEstimate | null;
+  notes?: string[];
   plain_language_summary: string;
+}
+
+export interface EstimateResponse {
+  estimate_id: string;
+  expires_in_s: number;
+  estimate: ScanEstimate;
+  notes?: string[];
+}
+
+export interface ScanTarget {
+  target: string;
+  commit_sha?: string;
+  mode: 'full_scan' | 'incremental_scan';
 }
 
 export interface RunSnapshot {
@@ -25,6 +46,8 @@ export interface RunSnapshot {
   error: string | null;
   report: SecurityReport | null;
   usage: UsageReport | null;
+  estimate: ScanEstimate | null;
+  target: { kind: 'directory' | 'file' | 'github'; label: string } | null;
   effective_mode: 'full_scan' | 'incremental_scan' | null;
   routes_analyzed: number | null;
   routes_failed: number | null;
@@ -50,7 +73,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch (error) {
     throw new ApiError(
       (error as Error).message,
-      "Impossible de joindre le service d'analyse. Vérifie qu'il est bien démarré."
+      errors().unreachable
     );
   }
 
@@ -59,15 +82,32 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     throw new ApiError(
       String(body.error ?? `HTTP ${response.status}`),
-      String(body.plain_language_summary ?? "L'opération n'a pas pu aboutir.")
+      String(body.plain_language_summary ?? errors().generic)
     );
   }
   return body as T;
 }
 
 export const api = {
-  launchScan(input: { repo_path: string; commit_sha?: string; mode: 'full_scan' | 'incremental_scan' }) {
-    return request<LaunchResponse>('/webhook', { method: 'POST', body: JSON.stringify(input) });
+  /**
+   * Devis : ce que l'analyse va coûter, sans rien dépenser.
+   *
+   * Le serveur garde de côté le travail préparatoire (index, éventuel clone)
+   * sous `estimate_id` : accepter le devis relance donc le scan sans tout
+   * recommencer.
+   */
+  estimateScan(input: ScanTarget) {
+    return request<EstimateResponse>('/estimate', {
+      method: 'POST',
+      body: JSON.stringify({ ...input, locale: getCurrentLocale() }),
+    });
+  },
+
+  launchScan(input: ScanTarget & { estimate_id?: string }) {
+    return request<LaunchResponse>('/webhook', {
+      method: 'POST',
+      body: JSON.stringify({ ...input, locale: getCurrentLocale() }),
+    });
   },
 
   getRun(runId: string) {
@@ -75,14 +115,16 @@ export const api = {
   },
 
   getProviders() {
-    return request<{ settings: ProviderSettings; available: ProviderAvailability[] }>('/providers');
+    return request<{ settings: ProviderSettings; available: ProviderAvailability[]; notes?: string[] }>(
+      `/providers?locale=${getCurrentLocale()}`
+    );
   },
 
   setProviders(next: Partial<ProviderSettings>) {
-    return request<{ settings: ProviderSettings; available: ProviderAvailability[] }>('/providers', {
-      method: 'POST',
-      body: JSON.stringify(next),
-    });
+    return request<{ settings: ProviderSettings; available: ProviderAvailability[]; notes?: string[] }>(
+      '/providers',
+      { method: 'POST', body: JSON.stringify({ ...next, locale: getCurrentLocale() }) }
+    );
   },
 
   /**
@@ -114,7 +156,7 @@ export const api = {
       // flux : on ne signale une panne que si la connexion est réellement
       // perdue alors qu'on attendait encore des événements.
       if (source.readyState === EventSource.CLOSED) {
-        handlers.onError("Le suivi en direct s'est interrompu. Le résultat reste consultable.");
+        handlers.onError(errors().streamLost);
       }
     };
 

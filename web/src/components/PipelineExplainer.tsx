@@ -14,10 +14,12 @@
 
 import { useState } from 'react';
 
-import { STEP_ORDER, STEP_TRANSLATIONS, type StepName } from '../lib/step_translations.ts';
+import { STEP_ORDER, stepTranslations, type StepName } from '../lib/step_translations.ts';
+import { useI18n } from '../i18n/context.tsx';
 
 export function StepExplanation({ step }: { step: StepName }) {
-  const translation = STEP_TRANSLATIONS[step];
+  const { locale } = useI18n();
+  const translation = stepTranslations(locale)[step];
   if (!translation) return null;
   return (
     <div className="vp-explain">
@@ -32,11 +34,12 @@ export function StepExplanation({ step }: { step: StepName }) {
 
 /** Bouton « à quoi ça sert ? » replié, à glisser sous une étape. */
 export function StepExplanationToggle({ step }: { step: StepName }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   return (
     <div className="vp-explain-inline">
       <button type="button" className="vp-link" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        {open ? 'Masquer' : 'À quoi ça sert ?'}
+        {open ? t.explainer.hide : t.explainer.show}
       </button>
       {open && <StepExplanation step={step} />}
     </div>
@@ -44,17 +47,15 @@ export function StepExplanationToggle({ step }: { step: StepName }) {
 }
 
 export function PipelineExplainer({ currentStep }: { currentStep?: StepName }) {
+  const { locale, t } = useI18n();
   return (
-    <section className="vp-pipeline-explainer" aria-label="Comment fonctionne l'analyse">
-      <h2>Comment on s'y prend</h2>
-      <p className="vp-pipeline-intro">
-        Ton code passe par sept étapes. Aucune ne demande de compétence technique de ta part : tu peux
-        suivre l'avancement et lire le résultat sans jamais ouvrir un fichier.
-      </p>
+    <section className="vp-pipeline-explainer" aria-label={t.explainer.title}>
+      <h2>{t.explainer.intro}</h2>
+      <p className="vp-pipeline-intro">{t.explainer.lede}</p>
 
       <ol className="vp-pipeline-steps">
         {STEP_ORDER.map((step, index) => {
-          const translation = STEP_TRANSLATIONS[step];
+          const translation = stepTranslations(locale)[step];
           const isCurrent = currentStep === step;
           return (
             <li key={step} className={isCurrent ? 'vp-pipeline-step vp-current' : 'vp-pipeline-step'}>
@@ -66,7 +67,7 @@ export function PipelineExplainer({ currentStep }: { currentStep?: StepName }) {
                   {translation.icon}
                 </span>
                 <strong>{translation.label}</strong>
-                {isCurrent && <span className="vp-pipeline-now">en cours</span>}
+                {isCurrent && <span className="vp-pipeline-now">{t.explainer.now}</span>}
               </div>
               <StepExplanation step={step} />
             </li>
@@ -78,13 +79,8 @@ export function PipelineExplainer({ currentStep }: { currentStep?: StepName }) {
           produit, elle mérite d'être dite à l'utilisateur, pas seulement
           codée. */}
       <aside className="vp-pipeline-cost">
-        <h3>Pourquoi ça ne coûte presque rien</h3>
-        <p>
-          La plupart des adresses de ton application sont tranchées par des vérifications automatiques
-          gratuites. Seuls les cas réellement douteux sont soumis à une intelligence artificielle, et
-          seuls les plus ambigus vont jusqu'à la seconde relecture, plus coûteuse. Tu vois le détail
-          exact de ce qui a été consommé à la fin de chaque analyse.
-        </p>
+        <h3>{t.explainer.costTitle}</h3>
+        <p>{t.explainer.costBody}</p>
       </aside>
     </section>
   );

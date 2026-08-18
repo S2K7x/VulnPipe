@@ -2,7 +2,6 @@
  * Chaîne complète : Indexeur -> MCP -> node IDOR -> Agrégateur -> Master -> Rapport.
  *
  * Lancer :
- *   set -a; source .env; set +a
  *   npm run report
  *
  * Le master est Claude par défaut (CLAUDE.md §2). Faute de ANTHROPIC_API_KEY,
@@ -16,6 +15,12 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { writeFileSync } from 'node:fs';
+
+// `.env` est chargé ici plutôt qu'attendu du shell : un script qu'il faut
+// précéder d'un `source .env` finit toujours par être lancé sans.
+// Import à effet de bord, placé en premier : les imports ES étant hissés,
+// un appel de fonction ici s'exécuterait après les modules importés en dessous.
+import '../src/config/load-env.ts';
 
 import { buildRepoIndex } from '../src/mcp-server/repo-index.ts';
 import { createServer } from '../src/mcp-server/server.ts';

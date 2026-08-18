@@ -1,24 +1,44 @@
 /**
- * État d'un scan : lancement, suivi en direct, récupération du rapport.
+ * État d'un scan : estimation, lancement, suivi en direct, rapport final.
  *
  * Isolé des composants pour être testable sans DOM.
+ *
+ * ============================================================================
+ * LE PARCOURS EN DEUX TEMPS
+ *
+ * Avant : « je clique, ça part, je découvre la facture après ».
+ * Maintenant : `idle -> estimating -> estimated -> running -> done`.
+ *
+ * L'étape `estimated` est un point d'arrêt volontaire. Elle coûte quelques
+ * secondes et zéro centime — le devis rejoue la pipeline jusqu'au dernier pas
+ * gratuit — et c'est le seul moment où l'utilisateur peut encore dire non en
+ * connaissance de cause.
+ * ============================================================================
  */
 
 import { useCallback, useRef, useState } from 'react';
 
-import { api, ApiError, type RunSnapshot } from './api.ts';
+import { api, ApiError, type RunSnapshot, type ScanTarget } from './api.ts';
 import type { StepEvent } from '../components/ScanTimeline.tsx';
+import type { ScanEstimate } from '../components/EstimatePanel.tsx';
 import type { StepName } from './step_translations.ts';
+import { getCurrentLocale } from '../i18n/context.tsx';
+import { dictionary } from '../i18n/dictionary.ts';
 
-export type ScanPhase = 'idle' | 'running' | 'done' | 'failed';
+export type ScanPhase = 'idle' | 'estimating' | 'estimated' | 'running' | 'done' | 'failed';
 
 export interface ScanState {
   phase: ScanPhase;
   runId: string | null;
   events: StepEvent[];
   snapshot: RunSnapshot | null;
+  /** Devis en attente d'acceptation, puis conservé pendant le scan. */
+  estimate: ScanEstimate | null;
+  estimateId: string | null;
   /** Message déjà rédigé pour un non-développeur. */
   error: string | null;
+  /** Remarques du serveur (repli de fournisseur, etc.). */
+  notes: string[];
   /** Étape en cours, pour surligner l'explication correspondante. */
   currentStep: StepName | null;
 }
@@ -28,47 +48,90 @@ const INITIAL: ScanState = {
   runId: null,
   events: [],
   snapshot: null,
+  estimate: null,
+  estimateId: null,
   error: null,
+  notes: [],
   currentStep: null,
 };
 
 export interface LaunchInput {
-  repoPath: string;
+  target: string;
   commitSha?: string;
   mode: 'full_scan' | 'incremental_scan';
 }
 
+const friendly = (error: unknown): string =>
+  error instanceof ApiError ? error.friendly : (error as Error).message;
+
 export function useScan() {
   const [state, setState] = useState<ScanState>(INITIAL);
   const closeStream = useRef<(() => void) | null>(null);
+  const pending = useRef<ScanTarget | null>(null);
 
   const reset = useCallback(() => {
     closeStream.current?.();
     closeStream.current = null;
+    pending.current = null;
     setState(INITIAL);
   }, []);
 
-  const launch = useCallback(async (input: LaunchInput) => {
+  /** Étape 1 : chiffrer. Rien n'est dépensé ici. */
+  const estimate = useCallback(async (input: LaunchInput) => {
     closeStream.current?.();
-    setState({ ...INITIAL, phase: 'running' });
+    setState({ ...INITIAL, phase: 'estimating' });
+
+    const request: ScanTarget = {
+      target: input.target,
+      commit_sha: input.commitSha || undefined,
+      mode: input.mode,
+    };
+    pending.current = request;
+
+    try {
+      const response = await api.estimateScan(request);
+      setState({
+        ...INITIAL,
+        phase: 'estimated',
+        estimate: response.estimate,
+        estimateId: response.estimate_id,
+        notes: response.notes ?? [],
+      });
+    } catch (error) {
+      pending.current = null;
+      setState({ ...INITIAL, phase: 'failed', error: friendly(error) });
+    }
+  }, []);
+
+  /** Étape 2 : lancer pour de vrai, sur la base du devis accepté. */
+  const confirm = useCallback(async () => {
+    const request = pending.current;
+    if (!request) return;
+
+    const accepted = { estimate: null as ScanEstimate | null, estimateId: null as string | null };
+    setState((previous) => {
+      accepted.estimate = previous.estimate;
+      accepted.estimateId = previous.estimateId;
+      return { ...previous, phase: 'running', events: [], error: null };
+    });
 
     let launched;
     try {
       launched = await api.launchScan({
-        repo_path: input.repoPath,
-        commit_sha: input.commitSha || undefined,
-        mode: input.mode,
+        ...request,
+        estimate_id: accepted.estimateId ?? undefined,
       });
     } catch (error) {
-      setState({
-        ...INITIAL,
-        phase: 'failed',
-        error: error instanceof ApiError ? error.friendly : (error as Error).message,
-      });
+      setState((previous) => ({ ...previous, phase: 'failed', error: friendly(error) }));
       return;
     }
 
-    setState((previous) => ({ ...previous, runId: launched.run_id }));
+    setState((previous) => ({
+      ...previous,
+      runId: launched.run_id,
+      estimate: launched.estimate ?? previous.estimate,
+      notes: launched.notes ?? previous.notes,
+    }));
 
     const finish = async () => {
       try {
@@ -81,15 +144,11 @@ export function useScan() {
           phase: snapshot.status === 'failed' || !snapshot.report ? 'failed' : 'done',
           error:
             snapshot.status === 'failed'
-              ? "L'analyse s'est interrompue avant d'avoir produit un rapport."
+              ? dictionary(getCurrentLocale()).errors.scanInterrupted
               : previous.error,
         }));
       } catch (error) {
-        setState((previous) => ({
-          ...previous,
-          phase: 'failed',
-          error: error instanceof ApiError ? error.friendly : (error as Error).message,
-        }));
+        setState((previous) => ({ ...previous, phase: 'failed', error: friendly(error) }));
       }
     };
 
@@ -110,5 +169,11 @@ export function useScan() {
     });
   }, []);
 
-  return { state, launch, reset };
+  /** Abandonner le devis et revenir au choix de la cible. */
+  const cancelEstimate = useCallback(() => {
+    pending.current = null;
+    setState(INITIAL);
+  }, []);
+
+  return { state, estimate, confirm, cancelEstimate, reset };
 }

@@ -6,7 +6,6 @@
  * HTML autonome (`demo/rapport.html`) montrant le rendu réel des composants.
  *
  * Lancer :
- *   set -a; source .env; set +a
  *   npm run e2e
  *
  * Ce qu'on doit observer :
@@ -22,16 +21,24 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
+// `.env` est chargé ici plutôt qu'attendu du shell : un script qu'il faut
+// précéder d'un `source .env` finit toujours par être lancé sans.
+// Import à effet de bord, placé en premier : les imports ES étant hissés,
+// un appel de fonction ici s'exécuterait après les modules importés en dessous.
+import '../src/config/load-env.ts';
+
 import { InMemoryQueue } from '../src/orchestration/queue.ts';
 import { createVulnPipeServer } from '../src/orchestration/webhook.ts';
 import type { ScanRequest } from '../src/orchestration/pipeline.ts';
-import { STEP_TRANSLATIONS } from '../web/src/lib/step_translations.ts';
+import { stepTranslations } from '../web/src/lib/step_translations.ts';
+
+// La démonstration est générée en anglais, langue par défaut du produit.
+const STEP_TRANSLATIONS = stepTranslations('en');
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_REPO = join(here, '..', 'src', 'nodes', 'idor', '__fixtures__', 'repo');
 
 // OpenRouter accepte les deux noms de variable.
-process.env.OPENROUTER_API_KEY ??= process.env.OPEN_ROUTER_API_KEY;
 
 const provider = process.env.VULNPIPE_LLM_PROVIDER ?? 'openrouter';
 const model = process.env.VULNPIPE_LLM_MODEL ?? 'openrouter/free';

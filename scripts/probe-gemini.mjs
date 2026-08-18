@@ -2,12 +2,15 @@
  * Probe Gemini — Phase 3. Même discipline qu'aux phases précédentes : on
  * observe la forme réelle des requêtes/réponses avant de coder quoi que ce soit.
  *
- * Lancer : set -a; source .env; set +a; node scripts/probe-gemini.mjs
+ * Lancer : node scripts/probe-gemini.mjs
  * La clé n'est jamais affichée.
  */
+const { loadEnv } = await import('../src/config/env.ts');
+loadEnv();
+
 const KEY = process.env.GEMINI_API_KEY;
 if (!KEY) {
-  console.error('GEMINI_API_KEY absent. Lancer avec: set -a; source .env; set +a');
+  console.error('GEMINI_API_KEY absente : ajoute-la dans .env à la racine du projet.');
   process.exit(1);
 }
 const BASE = 'https://generativelanguage.googleapis.com/v1beta';

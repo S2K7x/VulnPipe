@@ -13,6 +13,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      '/estimate': `http://localhost:${API_PORT}`,
       '/webhook': `http://localhost:${API_PORT}`,
       '/runs': `http://localhost:${API_PORT}`,
       '/providers': `http://localhost:${API_PORT}`,

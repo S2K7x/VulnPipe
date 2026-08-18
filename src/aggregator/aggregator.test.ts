@@ -243,8 +243,8 @@ describe('Fusion vs corrélation', () => {
   it('regroupe quand même les deux pour l affichage, avec un résumé clair', () => {
     const result = aggregate(TEN_FINDINGS);
     const billing = result.groups.find((g) => g.route === '/billing/invoices/:id')!;
-    expect(billing.plain_language_summary).toContain('2 problèmes différents');
-    expect(billing.plain_language_summary).toContain('se corrige séparément');
+    expect(billing.plain_language_summary).toContain('2 different problems');
+    expect(billing.plain_language_summary).toContain('fixed separately');
   });
 
   it('ne fusionne pas deux verbes HTTP différents sur la même route', () => {
@@ -399,7 +399,7 @@ describe('Compteur de volume', () => {
     const empty = aggregate([]);
     expect(empty.stats.percent_of_findings_to_claude).toBe(0);
     expect(empty.groups).toHaveLength(0);
-    expect(empty.plain_language_summary).toContain('Aucun problème');
+    expect(empty.plain_language_summary).toContain('no security issue');
   });
 });
 
@@ -475,7 +475,7 @@ describe('Explicabilité (CLAUDE.md §4)', () => {
     for (const jargon of ['JSON', 'confidence_score', 'payload', 'dedup', 'AST', 'routing']) {
       expect(summary.toLowerCase()).not.toContain(jargon.toLowerCase());
     }
-    expect(summary).toContain('10 signalement');
+    expect(summary).toContain('10 report(s) received');
   });
 
   it('explique chaque ajustement de sévérité en langage humain', () => {

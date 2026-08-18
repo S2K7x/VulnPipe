@@ -10,11 +10,12 @@ import { useMemo, useState } from 'react';
 
 import {
   STEP_ORDER,
-  STEP_TRANSLATIONS,
+  stepTranslations,
   translateStep,
   type StepName,
   type StepStatus,
 } from '../lib/step_translations.ts';
+import { useI18n } from '../i18n/context.tsx';
 import { StepExplanationToggle } from './PipelineExplainer.tsx';
 
 export interface StepEvent {
@@ -26,6 +27,25 @@ export interface StepEvent {
   at: string;
   detail?: string;
   progress?: { done: number; total: number };
+  /** Adresse concernée, quand l'événement en vise une. */
+  route?: { http_method: string; route: string };
+  /** Verdict rendu sur cette adresse. */
+  verdict?: {
+    vulnerability: string;
+    confidence_score: number;
+    zone: 'sain' | 'a_verifier' | 'alerte';
+    free: boolean;
+    plain_language_summary: string;
+  };
+  /** Consommation cumulée à l'instant de l'événement. */
+  usage?: {
+    calls: number;
+    input_tokens: number;
+    output_tokens: number;
+    thinking_tokens: number;
+    cost_usd: number | null;
+    elapsed_ms: number;
+  };
 }
 
 export interface ScanTimelineProps {
@@ -70,6 +90,14 @@ export function reduceEvents(events: StepEvent[]): StepState[] {
     const current = byStep.get(event.step);
     const failedBefore = current?.status === 'failed';
 
+    // Les verdicts par adresse et les compteurs de consommation passent en
+    // continu : les laisser écraser le message d'étape ferait clignoter la
+    // timeline au rythme du réseau. Leur place est dans le suivi en direct.
+    if ((event.verdict || event.usage) && current) {
+      byStep.set(event.step, { ...current, progress: event.progress ?? current.progress });
+      continue;
+    }
+
     byStep.set(event.step, {
       step: event.step,
       status: failedBefore && event.status === 'done' ? 'failed' : event.status,
@@ -83,12 +111,13 @@ export function reduceEvents(events: StepEvent[]): StepState[] {
 }
 
 function StatusIcon({ status }: { status: StepState['status'] }) {
+  const { t } = useI18n();
   const map: Record<string, { symbol: string; label: string }> = {
-    running: { symbol: '⏳', label: 'en cours' },
-    done: { symbol: '✅', label: 'terminé' },
-    failed: { symbol: '⚠️', label: 'problème rencontré' },
-    skipped: { symbol: '⏭️', label: 'étape sautée' },
-    pending: { symbol: '·', label: 'en attente' },
+    running: { symbol: '⏳', label: t.timeline.statusRunning },
+    done: { symbol: '✅', label: t.timeline.statusDone },
+    failed: { symbol: '⚠️', label: t.timeline.statusFailed },
+    skipped: { symbol: '⏭️', label: t.timeline.statusSkipped },
+    pending: { symbol: '·', label: t.timeline.statusPending },
   };
   const entry = map[status] ?? map.pending!;
   return (
@@ -104,16 +133,12 @@ export function ScanTimeline({
   showExplanations = false,
   currentStep = null,
 }: ScanTimelineProps) {
+  const { locale, t } = useI18n();
+  const translations = stepTranslations(locale);
   const steps = useMemo(() => reduceEvents(events), [events]);
   const [openDetails, setOpenDetails] = useState<Set<StepName>>(new Set());
 
-  if (steps.length === 0) {
-    return (
-      <p className="vp-timeline-empty">
-        L'analyse va démarrer. Tu verras ici, étape par étape, ce qui est en train d'être vérifié.
-      </p>
-    );
-  }
+  if (steps.length === 0) return <p className="vp-timeline-empty">{t.timeline.empty}</p>;
 
   const toggle = (step: StepName) => {
     setOpenDetails((previous) => {
@@ -125,9 +150,9 @@ export function ScanTimeline({
   };
 
   return (
-    <ol className="vp-timeline" aria-label="Avancement de l'analyse">
+    <ol className="vp-timeline" aria-label={t.timeline.heading}>
       {steps.map((state) => {
-        const translation = STEP_TRANSLATIONS[state.step];
+        const translation = translations[state.step];
         const isOpen = openDetails.has(state.step);
         const isCurrent = currentStep === state.step;
         return (
@@ -146,14 +171,14 @@ export function ScanTimeline({
             {/* Le message du serveur prime ; la table de traduction sert de
                 repli si un événement arrive sans texte. */}
             <p className="vp-step-message">
-              {state.message || translateStep(state.step, state.status as StepStatus)}
+              {state.message || translateStep(state.step, state.status as StepStatus, locale)}
             </p>
 
             {state.progress && state.progress.total > 0 && (
               <div className="vp-progress">
                 <progress value={state.progress.done} max={state.progress.total} />
                 <span>
-                  {state.progress.done} sur {state.progress.total}
+                  {t.timeline.of(state.progress.done, state.progress.total)}
                 </span>
               </div>
             )}
@@ -163,7 +188,7 @@ export function ScanTimeline({
             {showTechnicalDetail && state.details.length > 0 && (
               <div className="vp-step-details">
                 <button type="button" onClick={() => toggle(state.step)} aria-expanded={isOpen}>
-                  {isOpen ? 'Masquer le détail technique' : 'Voir le détail technique'}
+                  {isOpen ? t.timeline.hideDetail : t.timeline.showDetail}
                 </button>
                 {isOpen && (
                   <ul>

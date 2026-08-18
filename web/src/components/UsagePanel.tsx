@@ -15,6 +15,9 @@
 
 import { useState } from 'react';
 
+import { useI18n } from '../i18n/context.tsx';
+import type { Dictionary } from '../i18n/dictionary.ts';
+
 export interface UsageTotals {
   calls: number;
   input_tokens: number;
@@ -32,39 +35,38 @@ export interface UsageReport {
   plain_language_summary: string;
 }
 
-const STAGE_LABELS: Record<string, string> = {
-  detection: 'Recherche de failles',
-  master_review: 'Seconde relecture',
-};
 
-export function formatCost(totals: UsageTotals): string {
-  if (totals.cost_usd === null) return 'non communiqué par le fournisseur';
-  if (totals.cost_usd === 0) return 'gratuit';
+export function formatCost(totals: UsageTotals, t: Dictionary): string {
+  // Jamais « 0 $ » pour un coût non communiqué : ce serait présenter une
+  // absence d'information comme une gratuité.
+  if (totals.cost_usd === null) return t.usage.notReported;
+  if (totals.cost_usd === 0) return t.usage.free;
   const amount = totals.cost_usd < 0.01 ? totals.cost_usd.toFixed(4) : totals.cost_usd.toFixed(2);
-  return totals.cost_partial ? `${amount} $ (partiel)` : `${amount} $`;
+  return totals.cost_partial ? `$${amount} (${t.usage.partial})` : `$${amount}`;
 }
 
 export function UsagePanel({ usage }: { usage: UsageReport }) {
+  const { t } = useI18n();
   const [showDetail, setShowDetail] = useState(false);
   const { totals } = usage;
 
   return (
-    <section className="vp-usage" aria-label="Consommation de ce scan">
-      <h3>Ce que ce scan a consommé</h3>
+    <section className="vp-usage" aria-label={t.usage.heading}>
+      <h3>{t.usage.heading}</h3>
       <p className="vp-usage-summary">{usage.plain_language_summary}</p>
 
       <ul className="vp-usage-highlights">
         <li>
           <span className="vp-usage-value">{totals.calls}</span>
-          <span className="vp-usage-label">analyse(s) par IA</span>
+          <span className="vp-usage-label">{t.usage.calls}</span>
         </li>
         <li>
-          <span className="vp-usage-value">{formatCost(totals)}</span>
-          <span className="vp-usage-label">coût</span>
+          <span className="vp-usage-value">{formatCost(totals, t)}</span>
+          <span className="vp-usage-label">{t.usage.cost}</span>
         </li>
         <li>
           <span className="vp-usage-value">{Math.round(totals.latency_ms / 1000)} s</span>
-          <span className="vp-usage-label">de calcul</span>
+          <span className="vp-usage-label">{t.usage.compute}</span>
         </li>
       </ul>
 
@@ -75,7 +77,7 @@ export function UsagePanel({ usage }: { usage: UsageReport }) {
       {showDetail && (
         <div className="vp-usage-detail">
           <table>
-            <caption>Par étape</caption>
+            <caption>{t.usage.byStage}</caption>
             <thead>
               <tr>
                 <th scope="col">Étape</th>
@@ -89,24 +91,24 @@ export function UsagePanel({ usage }: { usage: UsageReport }) {
             <tbody>
               {Object.entries(usage.by_stage).map(([stage, stageTotals]) => (
                 <tr key={stage}>
-                  <th scope="row">{STAGE_LABELS[stage] ?? stage}</th>
+                  <th scope="row">{t.usage.stages[stage] ?? stage}</th>
                   <td>{stageTotals.calls}</td>
                   <td>{stageTotals.input_tokens}</td>
                   <td>{stageTotals.output_tokens}</td>
                   <td>{stageTotals.thinking_tokens}</td>
-                  <td>{formatCost(stageTotals)}</td>
+                  <td>{formatCost(stageTotals, t)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
 
           <table>
-            <caption>Par modèle</caption>
+            <caption>{t.usage.byModel}</caption>
             <thead>
               <tr>
-                <th scope="col">Modèle</th>
-                <th scope="col">Appels</th>
-                <th scope="col">Coût</th>
+                <th scope="col">{t.usage.model}</th>
+                <th scope="col">{t.usage.callsColumn}</th>
+                <th scope="col">{t.usage.costColumn}</th>
               </tr>
             </thead>
             <tbody>
@@ -114,7 +116,7 @@ export function UsagePanel({ usage }: { usage: UsageReport }) {
                 <tr key={model}>
                   <th scope="row">{model}</th>
                   <td>{modelTotals.calls}</td>
-                  <td>{formatCost(modelTotals)}</td>
+                  <td>{formatCost(modelTotals, t)}</td>
                 </tr>
               ))}
             </tbody>

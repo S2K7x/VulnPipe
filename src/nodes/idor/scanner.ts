@@ -19,6 +19,8 @@
  *     redécouvrir — et sert de garde-fou pour vérifier ses affirmations.
  */
 
+import { DEFAULT_LOCALE, type Locale } from '../../i18n/locale.ts';
+import { messages } from '../../i18n/messages.ts';
 import type { ContextBundle, ResolvedCall } from '../../mcp-server/resolver.ts';
 
 /** Segments de route qui désignent une ressource adressable : /orders/:id */
@@ -187,7 +189,10 @@ function isDataAccess(methodName: string): boolean {
 }
 
 /** Analyse déterministe d'un bundle de contexte. Ne fait aucun appel réseau. */
-export function scanForIdor(bundle: ContextBundle): ScannerReport {
+export function scanForIdor(
+  bundle: ContextBundle,
+  locale: Locale = DEFAULT_LOCALE
+): ScannerReport {
   const endpoint = bundle.endpoint;
 
   const resourceParams = [...endpoint.route.matchAll(RESOURCE_PARAM)].map((m) => m[1]!);
@@ -270,6 +275,7 @@ export function scanForIdor(bundle: ContextBundle): ScannerReport {
       hasResolvedGuard,
       hasUnresolvedGuard,
       decisiveScore,
+      locale,
     }),
   };
 }
@@ -282,15 +288,15 @@ function buildScannerSummary(input: {
   hasResolvedGuard: boolean;
   hasUnresolvedGuard: boolean;
   decisiveScore: number | null;
+  locale: Locale;
 }): string {
+  const t = messages(input.locale).scanner;
   if (input.decisiveScore !== null && input.hasNoAttackSurface) {
-    return `La route ${input.route} ne prend aucun numéro de ressource dans son adresse : il n'y a rien qu'un visiteur puisse modifier pour accéder aux données de quelqu'un d'autre.`;
+    return t.noAttackSurface(input.route);
   }
-  if (input.decisiveScore !== null) {
-    return `Sur la route ${input.route}, chaque lecture en base vérifie que la donnée appartient bien à la personne connectée. Changer le numéro dans l'adresse ne donne donc accès à rien.`;
-  }
+  if (input.decisiveScore !== null) return t.userScoped(input.route);
   if (input.unscoped && !input.hasResolvedGuard && !input.hasUnresolvedGuard) {
-    return `La route ${input.route} récupère des données à partir d'un numéro fourni dans l'adresse, sans vérifier à qui elles appartiennent et sans aucun contrôle d'accès déclaré. C'est le motif classique d'une fuite de données.`;
+    return t.unscopedNoGuard(input.route);
   }
-  return `La route ${input.route} demande un examen plus poussé : le premier passage automatique n'a pas pu conclure seul.`;
+  return t.needsReview(input.route);
 }

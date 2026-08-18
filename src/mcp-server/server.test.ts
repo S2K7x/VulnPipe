@@ -146,7 +146,7 @@ describe('get_context via un vrai client MCP', () => {
       'deleteOrder',
       'getPublicOrder',
     ]);
-    expect(unguardedPayload.plain_language_summary).toContain('sans aucun contrôle');
+    expect(unguardedPayload.plain_language_summary).toContain('no declared access control');
   });
 });
 

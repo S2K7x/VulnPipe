@@ -15,6 +15,8 @@
 
 import { useState } from 'react';
 
+import { useI18n } from '../i18n/context.tsx';
+
 export type ProviderName = 'gemini' | 'ollama' | 'anthropic' | 'openai' | 'openrouter' | 'custom';
 
 export interface ProviderSettings {
@@ -37,14 +39,6 @@ export interface ProviderSwitcherProps {
   disabled?: boolean;
 }
 
-const PROVIDER_LABELS: Record<ProviderName, { name: string; hint: string }> = {
-  gemini: { name: 'Google Gemini', hint: 'Rapide et peu coûteux. Une clé suffit.' },
-  ollama: { name: 'Ollama (sur ta machine)', hint: 'Gratuit et privé : rien ne sort de ton ordinateur.' },
-  anthropic: { name: 'Claude (Anthropic)', hint: 'Le plus fiable pour trancher les cas ambigus.' },
-  openai: { name: 'OpenAI', hint: 'Modèles GPT.' },
-  openrouter: { name: 'OpenRouter', hint: 'Accès à de nombreux modèles, dont des gratuits.' },
-  custom: { name: 'Serveur personnalisé', hint: 'Tout serveur compatible OpenAI que tu héberges.' },
-};
 
 /** Modèles conseillés par fournisseur, pour éviter la saisie à l'aveugle. */
 const SUGGESTED_MODELS: Partial<Record<ProviderName, string[]>> = {
@@ -75,6 +69,7 @@ function ProviderSelect({
   onProvider: (next: ProviderName) => void;
   onModel: (next: string) => void;
 }) {
+  const { t } = useI18n();
   const current = available.find((entry) => entry.id === value);
   const suggestions = SUGGESTED_MODELS[value] ?? [];
 
@@ -93,28 +88,28 @@ function ProviderSelect({
       >
         {available.map((entry) => (
           <option key={entry.id} value={entry.id} disabled={!entry.available}>
-            {PROVIDER_LABELS[entry.id]?.name ?? entry.id}
-            {entry.available ? '' : ' — clé manquante'}
+            {t.providers.names[entry.id] ?? entry.id}
+            {entry.available ? '' : t.providers.keyMissing}
           </option>
         ))}
       </select>
 
-      <p className="vp-provider-hint">{PROVIDER_LABELS[value]?.hint}</p>
+      <p className="vp-provider-hint">{t.providers.descriptions[value]}</p>
 
       {current && !current.available && (
         <p className="vp-provider-warning" role="alert">
-          Ce fournisseur ne peut pas être utilisé pour l'instant : {current.why}
+          {t.providers.cannotUse(current.why ?? '')}
         </p>
       )}
 
       <label htmlFor={`${id}-model`} className="vp-provider-model-label">
-        Modèle (facultatif)
+        {t.providers.model}
       </label>
       <input
         id={`${id}-model`}
         list={`${id}-suggestions`}
         value={model ?? ''}
-        placeholder="modèle par défaut"
+        placeholder={t.providers.modelPlaceholder}
         disabled={disabled}
         onChange={(event) => onModel(event.target.value)}
       />
@@ -128,6 +123,7 @@ function ProviderSelect({
 }
 
 export function ProviderSwitcher({ settings, available, onChange, disabled }: ProviderSwitcherProps) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState<ProviderSettings>(settings);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -146,13 +142,14 @@ export function ProviderSwitcher({ settings, available, onChange, disabled }: Pr
   };
 
   return (
-    <section className="vp-providers" aria-label="Choix des intelligences artificielles">
-      <h3>Quelle IA fait le travail</h3>
+    <section className="vp-providers" aria-label={t.providers.heading}>
+      <h3>{t.providers.heading}</h3>
+      <p className="vp-field-help">{t.providers.intro}</p>
 
       <ProviderSelect
         id="vp-node-provider"
-        label="Pour parcourir ton code"
-        description="Sollicitée sur chaque adresse de ton application : c'est elle qui pèse sur le coût."
+        label={t.providers.detectionRole}
+        description={t.providers.detectionHelp}
         value={draft.nodeProvider}
         model={draft.nodeModel}
         available={available}
@@ -163,8 +160,8 @@ export function ProviderSwitcher({ settings, available, onChange, disabled }: Pr
 
       <ProviderSelect
         id="vp-master-provider"
-        label="Pour la seconde relecture"
-        description="Sollicitée une seule fois, sur les points douteux. Privilégie la fiabilité."
+        label={t.providers.arbitrationRole}
+        description={t.providers.arbitrationHelp}
         value={draft.masterProvider}
         model={draft.masterModel}
         available={available}
@@ -182,9 +179,9 @@ export function ProviderSwitcher({ settings, available, onChange, disabled }: Pr
       )}
 
       <button type="button" onClick={apply} disabled={!dirty || saving || disabled}>
-        {saving ? 'Application...' : 'Appliquer'}
+        {saving ? t.providers.applying : t.providers.apply}
       </button>
-      {disabled && <p className="vp-provider-hint">Un scan est en cours : le réglage est figé jusqu'à la fin.</p>}
+      {disabled && <p className="vp-provider-hint">{t.providers.lockedDuringScan}</p>}
     </section>
   );
 }

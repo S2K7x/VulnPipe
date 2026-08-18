@@ -150,8 +150,8 @@ export function createServer(index: RepoIndex): McpServer {
         index_warnings: index.warnings,
         plain_language_summary:
           routes.length === 0
-            ? "Aucune route HTTP n'a été trouvée dans le code indexé."
-            : `${routes.length} route(s) HTTP trouvée(s) dans le projet, dont ${unguardedCount} sans aucun contrôle d'accès déclaré. Ce sont ces dernières qui méritent l'attention en priorité.`,
+            ? 'No HTTP route was found in the indexed code.'
+            : `${routes.length} HTTP route(s) found in the project, ${unguardedCount} of them with no declared access control. Those are the ones that deserve attention first.`,
       });
     }
   );

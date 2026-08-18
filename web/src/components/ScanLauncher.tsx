@@ -4,13 +4,37 @@
  * Écrit pour quelqu'un qui ne code pas : pas de `repo_path`, pas de
  * `commit_sha`, pas de `full_scan`. Des questions en français, et le
  * vocabulaire technique traduit dans l'aide de chaque champ.
+ *
+ * ============================================================================
+ * TROIS CIBLES, UN SEUL CHAMP
+ *
+ * On ne demande plus « le dossier de ton projet » mais « ce que tu veux
+ * vérifier », avec trois formes acceptées : un dossier, un fichier seul, ou
+ * l'adresse d'un dépôt GitHub.
+ *
+ * Le choix de la forme se fait par des onglets plutôt que par une détection
+ * silencieuse : c'est le même champ texte derrière, mais l'utilisateur voit
+ * qu'il A LE DROIT de coller un lien GitHub. Une capacité que rien n'annonce
+ * n'existe pas pour celui qui l'ignore.
+ *
+ * Le serveur, lui, reconnaît la forme tout seul (`scan-target.ts`) : les
+ * onglets n'ajoutent aucune contrainte, ils ne font qu'adapter l'exemple et
+ * l'aide affichés.
+ * ============================================================================
  */
 
 import { useState } from 'react';
 
+import { useI18n } from '../i18n/context.tsx';
+
+export type TargetKind = 'directory' | 'file' | 'github';
+
+const TARGET_KINDS: TargetKind[] = ['directory', 'file', 'github'];
+const TARGET_ICONS: Record<TargetKind, string> = { directory: '📁', file: '📄', github: '🌐' };
+
 export interface ScanLauncherProps {
   onLaunch: (input: {
-    repoPath: string;
+    target: string;
     commitSha?: string;
     mode: 'full_scan' | 'incremental_scan';
   }) => void;
@@ -19,13 +43,16 @@ export interface ScanLauncherProps {
   defaultPath?: string;
 }
 
+
 export function ScanLauncher({ onLaunch, busy, defaultPath = '' }: ScanLauncherProps) {
-  const [repoPath, setRepoPath] = useState(defaultPath);
+  const { t } = useI18n();
+  const [kind, setKind] = useState<TargetKind>('directory');
+  const [target, setTarget] = useState(defaultPath);
   const [mode, setMode] = useState<'full_scan' | 'incremental_scan'>('full_scan');
   const [commitSha, setCommitSha] = useState('');
   const [touched, setTouched] = useState(false);
 
-  const invalid = touched && repoPath.trim().length === 0;
+  const invalid = touched && target.trim().length === 0;
 
   return (
     <form
@@ -33,86 +60,95 @@ export function ScanLauncher({ onLaunch, busy, defaultPath = '' }: ScanLauncherP
       onSubmit={(submitEvent) => {
         submitEvent.preventDefault();
         setTouched(true);
-        if (repoPath.trim().length === 0) return;
-        onLaunch({ repoPath: repoPath.trim(), commitSha: commitSha.trim() || undefined, mode });
+        if (target.trim().length === 0) return;
+        onLaunch({ target: target.trim(), commitSha: commitSha.trim() || undefined, mode });
       }}
     >
-      <h2>Analyser un projet</h2>
+      <span className="vp-kicker">{t.launcher.kicker}</span>
+      <h2>{t.launcher.title}</h2>
 
-      <label htmlFor="vp-repo">
-        <strong>Où se trouve ton projet ?</strong>
-        <span className="vp-field-help">
-          Le dossier sur ton ordinateur qui contient le code à vérifier.
-        </span>
+      <div className="vp-target-tabs" role="tablist" aria-label={t.launcher.title}>
+        {TARGET_KINDS.map((id) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={kind === id}
+            className={kind === id ? 'vp-target-tab vp-target-tab-active' : 'vp-target-tab'}
+            onClick={() => setKind(id)}
+            disabled={busy}
+          >
+            {TARGET_ICONS[id]} {t.launcher.tabs[id]}
+          </button>
+        ))}
+      </div>
+
+      <label htmlFor="vp-target">
+        <strong>{t.launcher.question[kind]}</strong>
+        <span className="vp-field-help">{t.launcher.help[kind]}</span>
       </label>
       <input
-        id="vp-repo"
-        value={repoPath}
-        placeholder="/Users/moi/mon-projet"
-        onChange={(changeEvent) => setRepoPath(changeEvent.target.value)}
+        id="vp-target"
+        value={target}
+        placeholder={t.launcher.placeholder[kind]}
+        onChange={(changeEvent) => setTarget(changeEvent.target.value)}
         onBlur={() => setTouched(true)}
         disabled={busy}
         aria-invalid={invalid}
-        aria-describedby={invalid ? 'vp-repo-error' : undefined}
+        aria-describedby={invalid ? 'vp-target-error' : undefined}
       />
       {invalid && (
-        <p id="vp-repo-error" className="vp-field-error" role="alert">
-          Indique le dossier de ton projet pour lancer l'analyse.
+        <p id="vp-target-error" className="vp-field-error" role="alert">
+          {t.launcher.missingTarget}
         </p>
       )}
 
-      <fieldset className="vp-mode">
-        <legend>
-          <strong>Quelle étendue ?</strong>
-        </legend>
+      {/* Le choix de l'étendue n'a de sens que sur un projet versionné : sur un
+          fichier seul, il n'y a rien à comparer. */}
+      {kind !== 'file' && (
+        <fieldset className="vp-mode">
+          <legend>{t.launcher.scopeLegend}</legend>
 
-        <label className="vp-radio">
-          <input
-            type="radio"
-            name="mode"
-            checked={mode === 'full_scan'}
-            onChange={() => setMode('full_scan')}
-            disabled={busy}
-          />
-          <span>
-            <strong>Tout le projet</strong>
-            <span className="vp-field-help">
-              Plus long et plus coûteux, mais rien n'est laissé de côté. À faire la première fois.
+          <label className="vp-radio">
+            <input
+              type="radio"
+              name="mode"
+              checked={mode === 'full_scan'}
+              onChange={() => setMode('full_scan')}
+              disabled={busy}
+            />
+            <span>
+              <strong>{t.launcher.fullTitle}</strong>
+              <span className="vp-field-help">{t.launcher.fullHelp}</span>
             </span>
-          </span>
-        </label>
+          </label>
 
-        <label className="vp-radio">
-          <input
-            type="radio"
-            name="mode"
-            checked={mode === 'incremental_scan'}
-            onChange={() => setMode('incremental_scan')}
-            disabled={busy}
-          />
-          <span>
-            <strong>Seulement ce qui a changé</strong>
-            <span className="vp-field-help">
-              Beaucoup plus rapide et moins cher : on ne revérifie que les parties modifiées depuis
-              une version donnée. C'est le mode du quotidien.
+          <label className="vp-radio">
+            <input
+              type="radio"
+              name="mode"
+              checked={mode === 'incremental_scan'}
+              onChange={() => setMode('incremental_scan')}
+              disabled={busy}
+            />
+            <span>
+              <strong>{t.launcher.incrementalTitle}</strong>
+              <span className="vp-field-help">{t.launcher.incrementalHelp}</span>
             </span>
-          </span>
-        </label>
-      </fieldset>
+          </label>
+        </fieldset>
+      )}
 
-      {mode === 'incremental_scan' && (
+      {mode === 'incremental_scan' && kind !== 'file' && (
         <>
           <label htmlFor="vp-commit">
-            <strong>Depuis quelle version ?</strong>
-            <span className="vp-field-help">
-              L'identifiant de l'enregistrement à partir duquel comparer. Si tu ne le connais pas,
-              laisse vide : tout le projet sera analysé, et on te le dira.
-            </span>
+            <strong>{t.launcher.commitLabel}</strong>
+            <span className="vp-field-help">{t.launcher.commitHelp}</span>
           </label>
           <input
             id="vp-commit"
             value={commitSha}
-            placeholder="laisser vide si tu ne sais pas"
+            placeholder={t.launcher.commitPlaceholder}
             onChange={(changeEvent) => setCommitSha(changeEvent.target.value)}
             disabled={busy}
           />
@@ -120,8 +156,9 @@ export function ScanLauncher({ onLaunch, busy, defaultPath = '' }: ScanLauncherP
       )}
 
       <button type="submit" className="vp-primary" disabled={busy}>
-        {busy ? 'Analyse en cours...' : "Lancer l'analyse"}
+        {busy ? t.launcher.submitBusy : t.launcher.submit}
       </button>
+      <p className="vp-field-help">{t.launcher.reassurance}</p>
     </form>
   );
 }

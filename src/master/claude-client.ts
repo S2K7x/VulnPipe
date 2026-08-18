@@ -28,6 +28,8 @@
  * ============================================================================
  */
 
+import { DEFAULT_LOCALE, type Locale } from '../i18n/locale.ts';
+import { messages } from '../i18n/messages.ts';
 import type { AggregatedFinding } from '../aggregator/aggregator.ts';
 import type { ContextProvider } from '../nodes/shared/mcp-client.ts';
 import { AnthropicClient } from '../nodes/shared/llm/anthropic.ts';
@@ -209,6 +211,8 @@ export interface MasterOptions {
   llm?: LlmClient;
   /** Serveur MCP, pour donner le code à l'arbitre. Fortement recommandé. */
   contextProvider?: ContextProvider;
+  /** Langue du rapport rédigé par l'arbitre. */
+  locale?: Locale;
 }
 
 /**
@@ -268,7 +272,7 @@ ${blocks.join('\n\n')}`;
 
   try {
     const response = await llm.complete<{ verdicts: Omit<ArbitratedFinding, 'evidence'>[] }>({
-      system: MASTER_SYSTEM_PROMPT,
+      system: `${MASTER_SYSTEM_PROMPT}\n\n${messages(options.locale ?? DEFAULT_LOCALE).prompt.answerLanguage}`,
       user,
       schema: ARBITRATION_SCHEMA,
       temperature: 0,

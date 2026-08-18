@@ -49,6 +49,41 @@ export interface StepEvent {
   detail?: string;
   /** Progression fine quand l'étape traite plusieurs éléments. */
   progress?: { done: number; total: number };
+  /**
+   * Adresse concernée par cet événement.
+   *
+   * AJOUT : sans elle, la phase de détection n'est qu'une barre qui avance.
+   * L'utilisateur voit « 7 sur 34 » sans savoir CE QUI est en train d'être
+   * vérifié — or c'est précisément ce qui rend l'attente supportable et le
+   * produit crédible : on lui montre le travail, pas juste sa durée.
+   */
+  route?: { http_method: string; route: string };
+  /** Verdict rendu sur cette adresse, dès qu'il est connu. */
+  verdict?: {
+    vulnerability: string;
+    confidence_score: number;
+    /** Zone de décision (CLAUDE.md §3), déjà traduite côté serveur. */
+    zone: 'sain' | 'a_verifier' | 'alerte';
+    /** true si tranché sans appel à un modèle (donc gratuitement). */
+    free: boolean;
+    plain_language_summary: string;
+  };
+  /** Consommation cumulée à l'instant de l'événement. */
+  usage?: {
+    calls: number;
+    input_tokens: number;
+    output_tokens: number;
+    thinking_tokens: number;
+    cost_usd: number | null;
+    elapsed_ms: number;
+  };
+}
+
+/** Traduit un score en zone de décision (CLAUDE.md §3). */
+export function zoneOf(score: number): 'sain' | 'a_verifier' | 'alerte' {
+  if (score < 0.4) return 'sain';
+  if (score <= 0.7) return 'a_verifier';
+  return 'alerte';
 }
 
 export type StepListener = (event: StepEvent) => void;
@@ -82,7 +117,7 @@ export class StepEmitter {
     step: StepName,
     status: StepStatus,
     plainLanguage: string,
-    extra: { detail?: string; progress?: StepEvent['progress'] } = {}
+    extra: Omit<StepEvent, 'run_id' | 'seq' | 'step' | 'status' | 'plain_language' | 'at'> = {}
   ): StepEvent {
     const event: StepEvent = {
       run_id: this.runId,

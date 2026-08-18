@@ -154,7 +154,7 @@ describe('Cas de test imposé par PHASE_5 — payload des 10 findings', () => {
     expect(report.dismissed[0]!.claude_reasoning.length).toBeGreaterThan(10);
     expect(report.scan_summary.dismissed_by_arbiter).toBe(1);
     // Compté dans l'intro : l'utilisateur doit savoir que l'outil a regardé.
-    expect(report.scan_summary.plain_language_intro).toContain('écarté');
+    expect(report.scan_summary.plain_language_intro).toContain('dismissed');
   });
 });
 
@@ -269,7 +269,7 @@ describe('Robustesse : aucun finding ne disparaît sur panne', () => {
       expect(item.claude_verdict).toBe('needs_human_review');
       expect(item.evidence).toBe('not_arbitrated');
     }
-    expect(report.scan_summary.plain_language_intro).toContain('pas pu être revérifié');
+    expect(report.scan_summary.plain_language_intro).toContain('could not be double-checked');
   });
 
   it("récupère un verdict manquant dans une réponse partielle", async () => {
@@ -292,7 +292,7 @@ describe('Robustesse : aucun finding ne disparaît sur panne', () => {
 
     const report = buildReport(aggregate([]), outcome);
     expect(report.findings).toHaveLength(0);
-    expect(report.scan_summary.plain_language_intro).toContain('Bonne nouvelle');
+    expect(report.scan_summary.plain_language_intro).toContain('Good news');
   });
 });
 
@@ -358,7 +358,7 @@ describe('Contrainte : jamais de patch de code applicable', () => {
 
     expect(item.suggested_fix_direction).not.toContain('```');
     expect(item.suggested_fix_direction).not.toContain('ForbiddenException');
-    expect(report.scan_summary.plain_language_intro).toContain('en mots, pas en code');
+    expect(report.scan_summary.plain_language_intro).toContain('in words, not in code');
   });
 
   it("l'interdiction figure explicitement dans le prompt système", () => {
@@ -402,13 +402,13 @@ describe('Rapport final', () => {
     for (const jargon of ['IDOR', 'endpoint', 'payload', 'JSON', 'confidence_score', 'OWASP']) {
       expect(intro).not.toContain(jargon);
     }
-    expect(intro).toContain('40 adresses');
+    expect(intro).toContain('40 addresses');
   });
 
   it('signale une couverture partielle au lieu de la passer sous silence', async () => {
     const outcome = await arbitrate(candidates, { llm: new FakeLlmClient([{ parsed: verdictsFor() }]) });
     const report = buildReport(aggregation, outcome, { routesAnalyzed: 40, routesFailed: 3 });
-    expect(report.scan_summary.plain_language_intro).toContain('scan est incomplet');
+    expect(report.scan_summary.plain_language_intro).toContain('scan is incomplete');
   });
 
   it('produit un rapport trié et sérialisable au format de la Phase 6', async () => {

@@ -12,6 +12,9 @@
  */
 
 import type { LlmClient, LlmRequest, LlmResponse } from '../nodes/shared/llm/types.ts';
+import { observeLatency } from './pricing.ts';
+import { DEFAULT_LOCALE, type Locale } from '../i18n/locale.ts';
+import { messages } from '../i18n/messages.ts';
 
 export interface UsageEntry {
   /** Étape de la pipeline ayant déclenché l'appel. */
@@ -80,8 +83,54 @@ function accumulate(totals: UsageTotals, entry: UsageEntry): void {
   else totals.cost_usd = (totals.cost_usd ?? 0) + entry.cost_usd;
 }
 
+/** Instantané cumulé, publié en direct pendant le scan. */
+export interface UsageSnapshot {
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  thinking_tokens: number;
+  cost_usd: number | null;
+  elapsed_ms: number;
+}
+
 export class UsageTracker {
   private readonly entries: UsageEntry[] = [];
+  private readonly watchers: Array<(snapshot: UsageSnapshot) => void> = [];
+  private readonly startedAt = Date.now();
+  private readonly locale: Locale;
+
+  constructor(locale: Locale = DEFAULT_LOCALE) {
+    this.locale = locale;
+  }
+
+  /**
+   * S'abonne à chaque appel facturé, au fil de l'eau.
+   *
+   * AJOUT : la consommation n'était consultable qu'à la toute fin, dans le
+   * rapport. Or c'est pendant l'attente qu'elle intéresse — voir le compteur
+   * grimper appel par appel est ce qui rend la promesse « low-cost » tangible
+   * plutôt que déclarative, et ce qui permet d'interrompre un scan qui dérape.
+   */
+  onRecord(watcher: (snapshot: UsageSnapshot) => void): () => void {
+    this.watchers.push(watcher);
+    return () => {
+      const index = this.watchers.indexOf(watcher);
+      if (index >= 0) this.watchers.splice(index, 1);
+    };
+  }
+
+  snapshot(): UsageSnapshot {
+    const totals = emptyTotals();
+    for (const entry of this.entries) accumulate(totals, entry);
+    return {
+      calls: totals.calls,
+      input_tokens: totals.input_tokens,
+      output_tokens: totals.output_tokens,
+      thinking_tokens: totals.thinking_tokens,
+      cost_usd: totals.cost_usd,
+      elapsed_ms: Date.now() - this.startedAt,
+    };
+  }
 
   record(stage: string, response: LlmResponse<unknown>): void {
     this.entries.push({
@@ -97,6 +146,20 @@ export class UsageTracker {
       latency_ms: response.latency_ms,
       at: new Date().toISOString(),
     });
+
+    // Les latences réelles affinent les estimations des scans suivants :
+    // « environ 4 s par adresse » devient « 4,2 s mesurées chez toi ».
+    observeLatency(response.provider, response.latency_ms);
+
+    const snapshot = this.snapshot();
+    for (const watcher of this.watchers) {
+      // Un abonné qui plante ne doit jamais interrompre un scan en cours.
+      try {
+        watcher(snapshot);
+      } catch {
+        // ignoré volontairement
+      }
+    }
   }
 
   /**
@@ -135,46 +198,35 @@ export class UsageTracker {
       by_stage: byStage,
       by_model: byModel,
       entries: [...this.entries],
-      plain_language_summary: summarize(totals, byModel),
+      plain_language_summary: summarize(totals, byModel, this.locale),
     };
   }
 }
 
-function summarize(totals: UsageTotals, byModel: Record<string, UsageTotals>): string {
-  if (totals.calls === 0) {
-    return "Ce scan n'a fait appel à aucune intelligence artificielle : tout a été tranché par les vérifications automatiques, sans coût.";
-  }
+function summarize(
+  totals: UsageTotals,
+  byModel: Record<string, UsageTotals>,
+  locale: Locale
+): string {
+  const t = messages(locale).usage;
+  if (totals.calls === 0) return t.noLlm;
 
   const parts: string[] = [];
   const words = totals.input_tokens + totals.output_tokens + totals.thinking_tokens;
-  parts.push(
-    `Ce scan a demandé ${totals.calls} analyse${totals.calls > 1 ? 's' : ''} par intelligence artificielle, pour environ ${Math.round(words / 1000)} millier(s) de mots traités.`
-  );
+  parts.push(t.calls(totals.calls, Math.round(words / 1000)));
 
   if (totals.cost_usd !== null) {
-    const shown = totals.cost_usd === 0 ? 'gratuit' : `${totals.cost_usd.toFixed(4)} $`;
-    parts.push(
-      totals.cost_partial
-        ? `Coût connu pour une partie des appels : ${shown} (certains fournisseurs ne communiquent pas leurs prix).`
-        : `Coût total : ${shown}.`
-    );
+    const shown = totals.cost_usd === 0 ? t.free : `${totals.cost_usd.toFixed(4)} $`;
+    parts.push(totals.cost_partial ? t.costPartial(shown) : t.costTotal(shown));
   } else {
-    parts.push(
-      "Le coût n'est pas communiqué par le fournisseur utilisé : seul le volume traité est mesurable."
-    );
+    parts.push(t.costUnknown);
   }
 
   // Le raisonnement interne est le poste de dépense le moins visible.
-  if (totals.thinking_tokens > totals.output_tokens) {
-    parts.push(
-      "La majorité du travail facturé est de la réflexion interne du modèle, pas du texte produit : c'est normal, mais c'est là que part le budget."
-    );
-  }
+  if (totals.thinking_tokens > totals.output_tokens) parts.push(t.thinkingHeavy);
 
   const models = Object.keys(byModel);
-  if (models.length > 0) {
-    parts.push(`Modèle(s) utilisé(s) : ${models.join(', ')}.`);
-  }
+  if (models.length > 0) parts.push(t.models(models.join(', ')));
 
   return parts.join(' ');
 }

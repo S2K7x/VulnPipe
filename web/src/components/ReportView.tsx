@@ -10,7 +10,8 @@
 
 import { useState } from 'react';
 
-import { explainTerm, SEVERITY_LABELS } from '../lib/step_translations.ts';
+import { explainTerm, severityLabel } from '../lib/step_translations.ts';
+import { useI18n } from '../i18n/context.tsx';
 
 export interface ReportFinding {
   severity: string;
@@ -46,11 +47,12 @@ export interface SecurityReport {
 
 /** Nom technique + sa traduction, jamais l'un sans l'autre. */
 export function VulnerabilityName({ name }: { name: string }) {
-  const explanation = explainTerm(name);
+  const { locale, t } = useI18n();
+  const explanation = explainTerm(name, locale);
   if (!explanation) {
     // Terme absent du glossaire : on n'affiche PAS un sigle nu à quelqu'un qui
     // ne code pas. Mieux vaut une formulation générique qu'un mot opaque.
-    return <span className="vp-vuln-name">Problème de sécurité</span>;
+    return <span className="vp-vuln-name">{t.report.securityIssue}</span>;
   }
   return (
     <span className="vp-vuln-name" title={explanation}>
@@ -61,7 +63,8 @@ export function VulnerabilityName({ name }: { name: string }) {
 }
 
 function SeverityBadge({ severity }: { severity: string }) {
-  const entry = SEVERITY_LABELS[severity] ?? SEVERITY_LABELS.medium!;
+  const { locale } = useI18n();
+  const entry = severityLabel(severity, locale);
   return (
     <span className={`vp-badge vp-badge-${entry.tone}`} title={entry.explanation}>
       {entry.label}
@@ -71,14 +74,15 @@ function SeverityBadge({ severity }: { severity: string }) {
 
 /** Bandeau affiché quand un point n'a pas pu être revérifié. */
 function VerdictNotice({ finding }: { finding: ReportFinding }) {
+  const { t } = useI18n();
   if (finding.claude_verdict === 'confirmed' && finding.evidence === 'code') return null;
 
   const message =
     finding.evidence === 'not_arbitrated'
-      ? "Ce point n'a pas pu être revérifié une seconde fois. Il est affiché tel quel : fais-le confirmer par quelqu'un avant de conclure."
+      ? t.report.noticeNotArbitrated
       : finding.claude_verdict === 'needs_human_review'
-        ? "La seconde relecture n'a pas pu trancher : il manque des éléments dans ton code pour être certain. Une vérification humaine est nécessaire."
-        : "Ce point a été revérifié sans accès complet au code : à prendre avec prudence.";
+        ? t.report.noticeNeedsHuman
+        : t.report.noticeSummaryOnly;
 
   return (
     <p className="vp-notice" role="note">
@@ -88,6 +92,7 @@ function VerdictNotice({ finding }: { finding: ReportFinding }) {
 }
 
 export function FindingCard({ finding }: { finding: ReportFinding }) {
+  const { locale, t } = useI18n();
   // Replié par défaut : exigence explicite de la spec.
   const [showTechnical, setShowTechnical] = useState(false);
 
@@ -104,7 +109,7 @@ export function FindingCard({ finding }: { finding: ReportFinding }) {
       <p className="vp-finding-plain">{finding.plain_language_summary}</p>
 
       <div className="vp-finding-fix">
-        <strong>Ce qu'il faut faire : </strong>
+        <strong>{t.report.whatToDo}</strong>
         {finding.suggested_fix_direction}
       </div>
 
@@ -116,7 +121,7 @@ export function FindingCard({ finding }: { finding: ReportFinding }) {
         onClick={() => setShowTechnical((open) => !open)}
         aria-expanded={showTechnical}
       >
-        {showTechnical ? 'Masquer le détail technique' : 'Voir le détail technique'}
+        {showTechnical ? t.report.hideTechnical : t.report.showTechnical}
       </button>
 
       {showTechnical && (
@@ -136,14 +141,16 @@ export function FindingCard({ finding }: { finding: ReportFinding }) {
             <dt>Analyse</dt>
             <dd>{finding.technical_summary}</dd>
 
-            <dt>Pourquoi ce verdict</dt>
+            <dt>{t.report.whyVerdict}</dt>
             <dd>{finding.claude_reasoning}</dd>
 
             <dt>
-              Catégorie de référence{' '}
-              <abbr title={explainTerm('OWASP') ?? ''}>OWASP</abbr>
+              {t.report.referenceCategory}{' '}
+              <abbr title={explainTerm('OWASP', locale) ?? ''}>OWASP</abbr>
             </dt>
-            <dd title={explainTerm(finding.owasp_category) ?? undefined}>{finding.owasp_category}</dd>
+            <dd title={explainTerm(finding.owasp_category, locale) ?? undefined}>
+              {finding.owasp_category}
+            </dd>
           </dl>
         </div>
       )}
@@ -152,13 +159,14 @@ export function FindingCard({ finding }: { finding: ReportFinding }) {
 }
 
 export function ReportView({ report }: { report: SecurityReport }) {
+  const { t } = useI18n();
   const { scan_summary: summary, findings } = report;
 
   return (
     <section className="vp-report">
       {/* Le verdict global, avant tout scroll. */}
       <header className="vp-report-header">
-        <h2>Résultat de l'analyse</h2>
+        <h2>{t.report.heading}</h2>
         <p className="vp-intro">{summary.plain_language_intro}</p>
         <ul className="vp-counters">
           <li className="vp-badge vp-badge-red">{summary.critical} à corriger vite</li>

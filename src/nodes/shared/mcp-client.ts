@@ -12,6 +12,8 @@
  *    l'Indexeur tournera séparément (Phase 6, orchestration).
  */
 
+import { DEFAULT_LOCALE, type Locale } from '../../i18n/locale.ts';
+import { messages } from '../../i18n/messages.ts';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -57,10 +59,12 @@ export class McpContextProvider implements ContextProvider {
   // pas le strip-only mode de Node (limitation notée en Phase 2, ROADMAP.md).
   private readonly client: Client;
   private readonly onClose?: () => Promise<void>;
+  private readonly locale: Locale;
 
-  constructor(client: Client, onClose?: () => Promise<void>) {
+  constructor(client: Client, onClose?: () => Promise<void>, locale: Locale = DEFAULT_LOCALE) {
     this.client = client;
     this.onClose = onClose;
+    this.locale = locale;
   }
 
   async getContext(ref: RouteRef, depth: number): Promise<ContextBundle> {
@@ -80,9 +84,8 @@ export class McpContextProvider implements ContextProvider {
         | { error?: string; plain_language_summary?: string }
         | undefined;
       throw new McpAccessError(
-        payload?.error ?? 'Le serveur MCP a refusé la demande de contexte.',
-        payload?.plain_language_summary ??
-          "Impossible de récupérer le code de cette route. Elle n'a pas été analysée — ne la considère pas comme sûre."
+        payload?.error ?? 'The context server refused the get_context request.',
+        payload?.plain_language_summary ?? messages(this.locale).context.routeUnknown
       );
     }
 
@@ -96,8 +99,8 @@ export class McpContextProvider implements ContextProvider {
     });
     if (result.isError === true) {
       throw new McpAccessError(
-        'Le serveur MCP a refusé la liste des routes.',
-        "Impossible de lister les routes du projet. L'indexation a-t-elle bien tourné ?"
+        'The context server refused the list_routes request.',
+        messages(this.locale).context.listFailed
       );
     }
     return (result.structuredContent as unknown as { routes: ListedRoute[] }).routes;
@@ -110,11 +113,14 @@ export class McpContextProvider implements ContextProvider {
 }
 
 /** Relie un node à un serveur MCP vivant dans le même process. */
-export async function connectInProcess(server: McpServer): Promise<McpContextProvider> {
+export async function connectInProcess(
+  server: McpServer,
+  locale: Locale = DEFAULT_LOCALE
+): Promise<McpContextProvider> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 'vulnpipe-detection-node', version: '0.3.0' });
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
-  return new McpContextProvider(client, () => server.close());
+  return new McpContextProvider(client, () => server.close(), locale);
 }
 
 /** Relie un node à un serveur MCP lancé en sous-processus (stdio). */

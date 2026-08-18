@@ -28,6 +28,8 @@
  *     leur effet réel plutôt que de les supposer utiles.
  */
 
+import { DEFAULT_LOCALE, type Locale } from '../../i18n/locale.ts';
+import { messages } from '../../i18n/messages.ts';
 import type { JsonSchema } from '../shared/llm/types.ts';
 import type { ContextBundle, ResolvedCall, ResolvedGuard } from '../../mcp-server/resolver.ts';
 
@@ -154,6 +156,14 @@ function formatCalls(calls: ResolvedCall[], depth = 1): string {
 
 export interface BuildPromptOptions {
   includeFewShot?: boolean;
+  /**
+   * Langue des champs destinés à un humain.
+   *
+   * Traduire l'interface sans traduire ce que produit le modèle donnerait un
+   * écran anglais dont chaque alerte serait rédigée en français : le pire des
+   * deux mondes. La consigne part donc avec le prompt.
+   */
+  locale?: Locale;
 }
 
 /** Construit le message utilisateur à partir du bundle MCP de la Phase 2. */
@@ -199,8 +209,8 @@ Un score de 0.9 accompagné de "missing_context" est contradictoire : s'il te
 manque du contexte, le score appartient à la zone grise.
 ${options.includeFewShot ? FEW_SHOT : ''}
 ### FORMAT DE SORTIE — JSON STRICT, rien avant ni après
-Le champ "plain_language_summary" est obligatoire. Écris-le en français simple,
-pour quelqu'un qui n'a jamais codé : ce qui peut lui arriver concrètement et
-comment corriger. Jamais de jargon SAST ("taint analysis", "sink",
-"sanitization").`;
+Le champ "plain_language_summary" est obligatoire : ce qui peut arriver
+concrètement à l'utilisateur et comment corriger. Jamais de jargon SAST
+("taint analysis", "sink", "sanitization").
+${messages(options.locale ?? DEFAULT_LOCALE).prompt.answerLanguage}`;
 }

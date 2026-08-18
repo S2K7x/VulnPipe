@@ -12,6 +12,8 @@
  *             OPENROUTER_API_KEY, VULNPIPE_LLM_BASE_URL (pour `custom`).
  */
 
+import { DEFAULT_LOCALE, type Locale } from '../../../i18n/locale.ts';
+import { messages } from '../../../i18n/messages.ts';
 import { AnthropicClient, DEFAULT_ANTHROPIC_MODEL } from './anthropic.ts';
 import { DEFAULT_GEMINI_MODEL, GeminiClient } from './gemini.ts';
 import { OllamaClient } from './ollama.ts';
@@ -59,7 +61,7 @@ export function createLlmClient(env: FactoryEnv = process.env as FactoryEnv): Ll
     throw new LlmError(
       requested,
       'unknown',
-      `Fournisseur "${requested}" inconnu. Valeurs acceptées : ${SUPPORTED_PROVIDERS.join(', ')}.`,
+      `Unknown provider "${requested}". Accepted values: ${SUPPORTED_PROVIDERS.join(', ')}.`,
       false
     );
   }
@@ -114,7 +116,7 @@ export function createLlmClient(env: FactoryEnv = process.env as FactoryEnv): Ll
         throw new LlmError(
           'custom',
           'unknown',
-          'VULNPIPE_LLM_BASE_URL est requis avec VULNPIPE_LLM_PROVIDER=custom.',
+          'VULNPIPE_LLM_BASE_URL is required when VULNPIPE_LLM_PROVIDER=custom.',
           false
         );
       }
@@ -134,7 +136,7 @@ function requireKey(value: string | undefined, envName: string, provider: string
     throw new LlmError(
       provider,
       'auth',
-      `${envName} absente. Ajoute-la dans .env (ce fichier est ignoré par git).`,
+      `${envName} is missing. Add it to .env (that file is git-ignored).`,
       false
     );
   }
@@ -156,7 +158,11 @@ export interface ProviderAvailability {
   why: string | null;
 }
 
-export function describeProviders(env: FactoryEnv = process.env as FactoryEnv): ProviderAvailability[] {
+export function describeProviders(
+  env: FactoryEnv = process.env as FactoryEnv,
+  locale: Locale = DEFAULT_LOCALE
+): ProviderAvailability[] {
+  const t = messages(locale).providers;
   const ready = (id: ProviderName): ProviderAvailability => ({ id, available: true, why: null });
   const missing = (id: ProviderName, why: string): ProviderAvailability => ({
     id,
@@ -167,29 +173,22 @@ export function describeProviders(env: FactoryEnv = process.env as FactoryEnv): 
   return SUPPORTED_PROVIDERS.map((id) => {
     switch (id) {
       case 'gemini':
-        return env.GEMINI_API_KEY ? ready(id) : missing(id, 'GEMINI_API_KEY absente du fichier .env.');
+        return env.GEMINI_API_KEY ? ready(id) : missing(id, t.missingKey('GEMINI_API_KEY'));
       case 'anthropic':
-        return env.ANTHROPIC_API_KEY
-          ? ready(id)
-          : missing(
-              id,
-              "ANTHROPIC_API_KEY absente du fichier .env (une session `ant auth login` fonctionne aussi, mais n'est pas détectable ici)."
-            );
+        return env.ANTHROPIC_API_KEY ? ready(id) : missing(id, t.missingAnthropic);
       case 'openai':
-        return env.OPENAI_API_KEY ? ready(id) : missing(id, 'OPENAI_API_KEY absente du fichier .env.');
+        return env.OPENAI_API_KEY ? ready(id) : missing(id, t.missingKey('OPENAI_API_KEY'));
       case 'openrouter':
         return env.OPENROUTER_API_KEY ?? env.OPEN_ROUTER_API_KEY
           ? ready(id)
-          : missing(id, 'OPENROUTER_API_KEY (ou OPEN_ROUTER_API_KEY) absente du fichier .env.');
+          : missing(id, t.missingKey('OPENROUTER_API_KEY (or OPEN_ROUTER_API_KEY)'));
       case 'ollama':
         // Pas de clé, mais un serveur local doit tourner : on ne peut pas le
         // savoir sans requête réseau, donc on l'annonce comme utilisable et
         // c'est l'erreur d'appel qui informera précisément.
         return ready(id);
       case 'custom':
-        return env.VULNPIPE_LLM_BASE_URL
-          ? ready(id)
-          : missing(id, 'VULNPIPE_LLM_BASE_URL absente : indique l’adresse de ton serveur.');
+        return env.VULNPIPE_LLM_BASE_URL ? ready(id) : missing(id, t.missingBaseUrl);
     }
   });
 }

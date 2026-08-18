@@ -6,6 +6,7 @@
  * le client LLM sont génériques dans `../shared/` (exigence de PHASE_3).
  */
 
+import { DEFAULT_LOCALE, type Locale } from '../../i18n/locale.ts';
 import type { ContextBundle } from '../../mcp-server/resolver.ts';
 import type { ContextProvider, RouteRef } from '../shared/mcp-client.ts';
 import { McpAccessError } from '../shared/mcp-client.ts';
@@ -77,6 +78,8 @@ export interface IdorNodeOptions {
   includeFewShot?: boolean;
   /** Laisser le scanner déterministe court-circuiter le LLM quand il conclut seul. */
   allowDeterministicShortCircuit?: boolean;
+  /** Langue des résumés, côté scanner comme côté modèle. */
+  locale?: Locale;
 }
 
 export const DEFAULT_INITIAL_DEPTH = 2;
@@ -213,6 +216,7 @@ export async function analyzeRouteForIdor(
   const initialDepth = options.initialDepth ?? DEFAULT_INITIAL_DEPTH;
   const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
   const shortCircuit = options.allowDeterministicShortCircuit ?? true;
+  const locale = options.locale ?? DEFAULT_LOCALE;
 
   let bundle: ContextBundle;
   try {
@@ -225,7 +229,7 @@ export async function analyzeRouteForIdor(
     );
   }
 
-  const scanner = scanForIdor(bundle);
+  const scanner = scanForIdor(bundle, locale);
 
   // Économie de tokens : rien à arbitrer, on ne paie pas d'appel LLM.
   if (shortCircuit && scanner.decisive_score !== null) {
@@ -240,7 +244,7 @@ export async function analyzeRouteForIdor(
   const ask = async (context: ContextBundle): Promise<RawVerdict> => {
     const response = await options.llm.complete<RawVerdict>({
       system: IDOR_SYSTEM_PROMPT,
-      user: buildIdorPrompt(context, { includeFewShot: options.includeFewShot }),
+      user: buildIdorPrompt(context, { includeFewShot: options.includeFewShot, locale }),
       schema: IDOR_OUTPUT_SCHEMA,
       temperature: 0,
     });
@@ -276,7 +280,7 @@ export async function analyzeRouteForIdor(
     couldDeepenHelp(bundle)
   ) {
     const deeper = await options.contextProvider.getContext(ref, depthUsed + 1);
-    const deeperScanner = scanForIdor(deeper);
+    const deeperScanner = scanForIdor(deeper, locale);
     bundle = deeper;
     depthUsed += 1;
     retried = true;

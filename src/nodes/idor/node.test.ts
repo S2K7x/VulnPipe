@@ -113,6 +113,65 @@ describe('Scanner déterministe (sans LLM)', () => {
     expect(report.has_unscoped_data_access).toBe(true);
     expect(report.decisive_score).toBeNull();
   });
+
+  it("ne se laisse pas berner par un paramètre userId reçu mais jamais branché sur le filtre", () => {
+    // Faux négatif plus sournois que le précédent, et bien plus dangereux :
+    // le champ d'identité n'est pas dans un log à côté, il est dans LA MÊME
+    // méthode qui exécute la requête — reçu en paramètre (oubli très courant
+    // chez un vibe coder qui a commencé à câbler l'ownership check puis ne
+    // l'a jamais fini) mais jamais utilisé pour filtrer. Chercher le filtre
+    // dans tout le corps de la méthode, au lieu de se concentrer sur l'appel
+    // lui-même, classait ce cas comme protégé — avec un decisive_score qui
+    // court-circuite jusqu'au LLM. La pire espèce de faux négatif : silencieuse,
+    // et personne, humain ou modèle, ne la revoit jamais.
+    const bundle = resolveContext(index, { route: '/orders/:id', httpMethod: 'GET' });
+    const trapCandidateSnapshot = [
+      'async retrieve(id: string, userId: string) {',
+      '  return this.db.orders.findOne({ id }); // userId reçu, jamais utilisé',
+      '}',
+    ].join('\n');
+    const piege = {
+      ...bundle,
+      resolved_calls: [
+        {
+          call: 'retrieve',
+          injected_type: 'OrderService',
+          receiver: 'orderService',
+          line: 9,
+          resolution_status: 'resolved' as const,
+          reason: null,
+          candidates: [
+            {
+              class_name: 'OrderService',
+              file: 'trap.service.ts',
+              method: 'retrieve',
+              code_snapshot: trapCandidateSnapshot,
+              start_line: 9,
+              end_line: 11,
+            },
+          ],
+          resolved_calls: [
+            {
+              call: 'findOne',
+              injected_type: null,
+              receiver: 'this.db.orders',
+              line: 10,
+              resolution_status: 'not_found' as const,
+              reason: 'missing_context' as const,
+              candidates: [],
+              resolved_calls: [],
+              already_expanded: false,
+            },
+          ],
+          already_expanded: false,
+        },
+      ],
+    };
+    const report = scanForIdor(piege);
+    expect(report.has_unscoped_data_access).toBe(true);
+    expect(report.has_user_scoped_data_access).toBe(false);
+    expect(report.decisive_score).toBeNull();
+  });
 });
 
 describe('Node IDOR — les 3 cas imposés par PHASE_3 (logique, LLM simulé)', () => {

@@ -203,6 +203,19 @@ Cocher au fur et à mesure. Chaque phase correspond à un fichier
         faisait passer une route vulnérable pour saine — bug attrapé par un
         test). Il reste heuristique : noms de méthodes et de champs codés en
         dur, pas de suivi de flux de données.
+        **[corrigé la nuit du 2026-08-18, voir NIGHTLY_LOG.md]** Le point le
+        plus dangereux de cette heuristique a été resserré : `mentionsUserScope`
+        cherchait le champ d'identité dans TOUT le corps de la méthode
+        englobante plutôt que près de l'appel — un paramètre `userId` reçu
+        mais jamais branché sur le filtre suffisait à déclencher le
+        `decisive_score` "sain" et à court-circuiter jusqu'au LLM. La
+        vérification est maintenant bornée à une fenêtre de lignes qui suit
+        l'appel, jamais en arrière. Reste non couvert par construction (choix
+        assumé, direction sûre) : un contrôle d'accès écrit en amont de
+        l'appel (`if (!owns(id, userId)) throw ...`) n'est plus reconnu comme
+        une protection par le scanner déterministe — la route bascule en zone
+        grise (coût LLM en plus) au lieu d'être tranchée à coût nul. Le suivi
+        de flux de données réel resterait le vrai correctif de fond.
       - Un seul type de vuln (IDOR). La structure `prompt`/`scanner`/`node`
         est copiable telle quelle ; seuls la grille et les directives changent.
       - Pas encore de parcours automatique de toutes les routes ni de

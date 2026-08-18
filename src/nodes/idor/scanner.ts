@@ -103,26 +103,64 @@ interface DataAccessSite {
    * est protégé, `logger.log(req.user.id)` suivi de `findOne({ id })` ne l'est pas.
    */
   enclosingCode: string;
+  /** Première ligne (1-indexée, fichier source) de `enclosingCode`. */
+  enclosingStartLine: number;
 }
 
 /** Parcourt l'arbre en gardant le corps englobant de chaque appel. */
-function collectDataAccessSites(calls: ResolvedCall[], enclosingCode: string): DataAccessSite[] {
+function collectDataAccessSites(
+  calls: ResolvedCall[],
+  enclosingCode: string,
+  enclosingStartLine: number
+): DataAccessSite[] {
   const sites: DataAccessSite[] = [];
   for (const call of calls) {
     sites.push({
       call,
       file: call.candidates[0]?.file ?? null,
       enclosingCode,
+      enclosingStartLine,
     });
     // Les appels sortants d'une méthode résolue sont englobés par SON corps.
     for (const candidate of call.candidates) {
-      sites.push(...collectDataAccessSites(call.resolved_calls, candidate.code_snapshot));
+      sites.push(...collectDataAccessSites(call.resolved_calls, candidate.code_snapshot, candidate.start_line));
     }
     if (call.candidates.length === 0 && call.resolved_calls.length > 0) {
-      sites.push(...collectDataAccessSites(call.resolved_calls, enclosingCode));
+      sites.push(...collectDataAccessSites(call.resolved_calls, enclosingCode, enclosingStartLine));
     }
   }
   return sites;
+}
+
+/**
+ * Nombre de lignes APRÈS l'appel incluses dans la fenêtre de vérification du
+ * filtre — assez pour couvrir un littéral d'objet multi-lignes
+ * (`findOne({\n  id,\n  userId,\n})`), pas plus.
+ */
+const SCOPE_WINDOW_LINES = 4;
+
+/**
+ * Bug corrigé (voir NIGHTLY_LOG.md) : `mentionsUserScope` cherchait le champ
+ * d'identité dans TOUT le corps de la méthode englobante, pas seulement près
+ * de l'appel. Un paramètre `userId` reçu mais jamais branché sur le filtre
+ * (oubli très courant) suffisait à faire classer `findOne({ id })` comme
+ * protégé — un faux négatif qui court-circuite même le LLM, puisque c'est le
+ * chemin de décision déterministe.
+ *
+ * La fenêtre ne regarde volontairement JAMAIS en arrière : un paramètre de
+ * signature ou un log précédent l'appel ne doivent plus compter. Un
+ * contrôle d'accès écrit en amont (`if (!owns) throw`) échappe donc à cette
+ * détection et fait basculer la route en zone grise plutôt qu'en verdict
+ * "sain" — direction sûre : dans le doute, on demande, on ne conclut jamais
+ * à tort qu'une route est protégée.
+ */
+function extractCallWindow(enclosingCode: string, enclosingStartLine: number, callLine: number): string {
+  const lines = enclosingCode.split('\n');
+  const relativeIndex = callLine - enclosingStartLine;
+  // Décalage incohérent (ne devrait pas arriver en usage réel) : repli
+  // conservateur, jamais vers le texte complet qui a causé le bug.
+  if (relativeIndex < 0 || relativeIndex >= lines.length) return '';
+  return lines.slice(relativeIndex, relativeIndex + 1 + SCOPE_WINDOW_LINES).join('\n');
 }
 
 /**
@@ -160,16 +198,17 @@ export function scanForIdor(bundle: ContextBundle): ScannerReport {
   const hasUnresolvedGuard = guards.some((g) => g.resolution_status !== 'resolved');
 
   // Toutes les requêtes de persistance atteignables depuis ce handler.
-  const sites = collectDataAccessSites(bundle.resolved_calls, endpoint.code_snapshot);
+  const sites = collectDataAccessSites(bundle.resolved_calls, endpoint.code_snapshot, endpoint.source.start_line);
   let unscoped = false;
   let scoped = false;
 
   for (const entry of sites) {
     if (!isDataAccess(entry.call.call)) continue;
 
-    // Le filtre se juge sur le corps qui ÉCRIT la requête, pas sur le handler
-    // entier — sinon un `req.user.id` de log masquerait la vulnérabilité.
-    const surroundings = entry.enclosingCode;
+    // Le filtre se juge sur les lignes qui ÉCRIVENT la requête, pas sur toute
+    // la méthode englobante — sinon un `req.user.id` de log, ou un paramètre
+    // reçu mais jamais utilisé, masquerait la vulnérabilité (voir NIGHTLY_LOG.md).
+    const surroundings = extractCallWindow(entry.enclosingCode, entry.enclosingStartLine, entry.call.line);
     if (mentionsUserScope(surroundings)) {
       scoped = true;
       findings.push({

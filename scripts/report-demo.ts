@@ -47,7 +47,7 @@ const nodeLlm = createLlmClient({
 let masterProvider = process.env.VULNPIPE_MASTER_PROVIDER ?? 'anthropic';
 if (masterProvider === 'anthropic' && !process.env.ANTHROPIC_API_KEY) {
   console.log(
-    "⚠️  ANTHROPIC_API_KEY absente — le master bascule sur Gemini pour cette démonstration.\n" +
+    "[!] ANTHROPIC_API_KEY absente — le master bascule sur Gemini pour cette démonstration.\n" +
       "    CLAUDE.md prévoit Claude comme arbitre : ce rapport n'est donc pas représentatif\n" +
       '    de la qualité d’arbitrage attendue en production.\n'
   );

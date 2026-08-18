@@ -16,6 +16,7 @@ import { useState } from 'react';
 
 import { STEP_ORDER, stepTranslations, type StepName } from '../lib/step_translations.ts';
 import { useI18n } from '../i18n/context.tsx';
+import { Icon } from './Icon.tsx';
 
 export function StepExplanation({ step }: { step: StepName }) {
   const { locale } = useI18n();
@@ -25,17 +26,23 @@ export function StepExplanation({ step }: { step: StepName }) {
     <div className="vp-explain">
       <p className="vp-explain-why">{translation.why}</p>
       <p className="vp-explain-analogy">
-        <span aria-hidden="true">💡 </span>
+        <Icon name="bulb" size={15} />
         {translation.analogy}
       </p>
     </div>
   );
 }
 
-/** Bouton « à quoi ça sert ? » replié, à glisser sous une étape. */
-export function StepExplanationToggle({ step }: { step: StepName }) {
+/**
+ * Bouton « à quoi ça sert ? » replié, à glisser sous une étape.
+ *
+ * `defaultOpen` sert la préférence de lecture : quelqu'un qui a demandé dans
+ * les réglages à voir les explications les voit d'emblée, sans avoir à
+ * déplier sept fois à chaque scan.
+ */
+export function StepExplanationToggle({ step, defaultOpen = false }: { step: StepName; defaultOpen?: boolean }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="vp-explain-inline">
       <button type="button" className="vp-link" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
@@ -63,8 +70,8 @@ export function PipelineExplainer({ currentStep }: { currentStep?: StepName }) {
                 <span className="vp-pipeline-number" aria-hidden="true">
                   {index + 1}
                 </span>
-                <span className="vp-step-icon" aria-hidden="true">
-                  {translation.icon}
+                <span className="vp-step-icon">
+                  <Icon name={translation.icon} size={18} />
                 </span>
                 <strong>{translation.label}</strong>
                 {isCurrent && <span className="vp-pipeline-now">{t.explainer.now}</span>}

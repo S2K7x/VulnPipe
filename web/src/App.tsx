@@ -28,20 +28,24 @@
 import { useEffect, useState } from 'react';
 
 import { ScanLauncher } from './components/ScanLauncher.tsx';
+import { LandingPage } from './components/LandingPage.tsx';
+import { SettingsPage } from './components/SettingsPage.tsx';
 import { EstimatePanel } from './components/EstimatePanel.tsx';
 import { LiveActivity } from './components/LiveActivity.tsx';
 import { ScanTimeline } from './components/ScanTimeline.tsx';
 import { ReportView } from './components/ReportView.tsx';
 import { UsagePanel } from './components/UsagePanel.tsx';
-import { ProviderSwitcher, type ProviderAvailability, type ProviderSettings } from './components/ProviderSwitcher.tsx';
+import type { ProviderAvailability, ProviderSettings } from './components/ProviderSwitcher.tsx';
 import { PipelineExplainer } from './components/PipelineExplainer.tsx';
 import { LanguageSwitcher } from './components/LanguageSwitcher.tsx';
 import { useScan } from './lib/useScan.ts';
+import { usePreferences } from './lib/preferences.ts';
+import { Icon } from './components/Icon.tsx';
 import { api, ApiError } from './lib/api.ts';
 import { useI18n } from './i18n/context.tsx';
 import { stepTranslations, STEP_ORDER, type StepName } from './lib/step_translations.ts';
 
-type Tab = 'scan' | 'settings';
+type Tab = 'home' | 'scan' | 'settings';
 
 /** Logo : un bloc typographique, pas une image à charger. */
 function Logo() {
@@ -80,8 +84,8 @@ function StepRail({ currentStep }: { currentStep: StepName | null }) {
             key={step}
             className={`vp-steprail-item${isCurrent ? ' vp-current' : ''}${isDone ? ' vp-done' : ''}`}
           >
-            <span className="vp-steprail-icon" aria-hidden="true">
-              {translations[step].icon}
+            <span className="vp-steprail-icon">
+              <Icon name={translations[step].icon} size={18} />
             </span>
             <span className="vp-steprail-label">{translations[step].label}</span>
             <span className="vp-steprail-num">{String(index + 1).padStart(2, '0')}</span>
@@ -95,7 +99,11 @@ function StepRail({ currentStep }: { currentStep: StepName | null }) {
 export function App() {
   const { state, estimate, confirm, cancelEstimate, reset } = useScan();
   const { locale, t } = useI18n();
-  const [tab, setTab] = useState<Tab>('scan');
+  const { preferences, update } = usePreferences();
+  // La présentation est la porte d'entrée : quelqu'un qui arrive doit pouvoir
+  // comprendre ce que fait l'outil avant qu'on lui demande de désigner un
+  // dossier. Le bouton d'appel à l'action l'emmène en un clic sur le lanceur.
+  const [tab, setTab] = useState<Tab>('home');
   const [providers, setProviders] = useState<{
     settings: ProviderSettings;
     available: ProviderAvailability[];
@@ -113,6 +121,27 @@ export function App() {
       );
   }, [locale]);
 
+  /**
+   * Acceptation automatique d'un devis négligeable.
+   *
+   * Seulement si l'utilisateur a lui-même posé un plafond dans les réglages
+   * (0 par défaut, donc désactivé), et seulement quand le coût HAUT de la
+   * fourchette passe sous ce plafond : accepter sur l'estimation basse
+   * reviendrait à dépenser plus que le montant annoncé comme négligeable.
+   *
+   * Un devis non chiffrable n'est jamais accepté tout seul : « inconnu » ne
+   * veut pas dire « petit ».
+   */
+  useEffect(() => {
+    if (state.phase !== 'estimated' || !state.estimate) return;
+    const ceiling = preferences.autoConfirmUnderUsd;
+    if (ceiling <= 0) return;
+    const { usd, free } = state.estimate.cost;
+    const high = free ? 0 : usd?.high;
+    if (high === undefined || high === null) return;
+    if (high < ceiling) void confirm();
+  }, [state.phase, state.estimate, preferences.autoConfirmUnderUsd, confirm]);
+
   const running = state.phase === 'running';
   const busy = running || state.phase === 'estimating';
   const report = state.snapshot?.report ?? null;
@@ -124,6 +153,14 @@ export function App() {
       <header className="vp-header">
         <Logo />
         <nav className="vp-nav" aria-label={t.app.menu}>
+          <button
+            type="button"
+            className={tab === 'home' ? 'vp-tab vp-tab-active' : 'vp-tab'}
+            onClick={() => setTab('home')}
+            aria-current={tab === 'home'}
+          >
+            {t.app.navHome}
+          </button>
           <button
             type="button"
             className={tab === 'scan' ? 'vp-tab vp-tab-active' : 'vp-tab'}
@@ -144,32 +181,33 @@ export function App() {
         </nav>
       </header>
 
-      {tab === 'settings' ? (
+      {tab === 'home' ? (
+        <main className="vp-main">
+          <LandingPage onStart={() => setTab('scan')} />
+        </main>
+      ) : tab === 'settings' ? (
         <main className="vp-main">
           {providerError && (
             <p className="vp-banner vp-banner-error" role="alert">
               {providerError}
             </p>
           )}
-          {providers && (
-            <ProviderSwitcher
-              settings={providers.settings}
-              available={providers.available}
-              disabled={busy}
-              onChange={async (next) => {
-                try {
-                  setProviders(await api.setProviders(next));
-                  setProviderError(null);
-                } catch (error) {
-                  // L'erreur remonte au composant, qui l'affiche à côté du
-                  // réglage fautif plutôt qu'en haut de page.
-                  throw new Error(
-                    error instanceof ApiError ? error.friendly : (error as Error).message
-                  );
-                }
-              }}
-            />
-          )}
+          <SettingsPage
+            providers={providers}
+            busy={busy}
+            onProviderChange={async (next) => {
+              try {
+                setProviders(await api.setProviders(next));
+                setProviderError(null);
+              } catch (error) {
+                // L'erreur remonte au composant, qui l'affiche à côté du
+                // réglage fautif plutôt qu'en haut de page.
+                throw new Error(
+                  error instanceof ApiError ? error.friendly : (error as Error).message
+                );
+              }
+            }}
+          />
         </main>
       ) : (
         <main className="vp-main">
@@ -186,7 +224,16 @@ export function App() {
 
           {(state.phase === 'idle' || state.phase === 'estimating') && (
             <>
-              <ScanLauncher onLaunch={estimate} busy={busy} />
+              <ScanLauncher
+                onLaunch={(input) => {
+                  if (preferences.rememberTarget) update({ lastTarget: input.target });
+                  estimate(input);
+                }}
+                busy={busy}
+                defaultPath={preferences.rememberTarget ? preferences.lastTarget : ''}
+                defaultKind={preferences.defaultKind}
+                defaultMode={preferences.defaultMode}
+              />
               {state.phase === 'estimating' && (
                 <p className="vp-banner vp-banner-info" role="status">
                   {t.estimate.estimating}
@@ -234,6 +281,7 @@ export function App() {
                   events={state.events}
                   showTechnicalDetail
                   showExplanations
+                  openExplanations={preferences.explanationsByDefault}
                   currentStep={state.currentStep}
                 />
               </section>

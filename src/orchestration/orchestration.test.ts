@@ -15,6 +15,7 @@ import { StepEmitter } from './step-events.ts';
 import { UsageTracker } from './usage-tracker.ts';
 import { runScan, selectRoutes, IDOR_DETECTION_NODE, type ScanRequest } from './pipeline.ts';
 import { createVulnPipeServer } from './webhook.ts';
+import { DIRECT_ALERT_ABOVE, REJECT_BELOW } from '../aggregator/aggregator.ts';
 import { FakeLlmClient } from '../nodes/shared/llm/fake.ts';
 import { LlmError } from '../nodes/shared/llm/types.ts';
 import { buildRepoIndex } from '../mcp-server/repo-index.ts';
@@ -415,5 +416,49 @@ describe('Webhook', () => {
   it('renvoie 404 sur un run inconnu', async () => {
     const server = makeServer();
     expect((await call(server, 'GET', '/runs/inexistant')).status).toBe(404);
+  });
+
+  // -------------------------------------------------------------------------
+  // Réglages d'analyse
+  //
+  // Ils sont servis PAR LE SERVEUR et non figés dans l'interface : les seuils
+  // affichés à l'utilisateur doivent être ceux que l'agrégateur applique
+  // réellement, sinon l'écran explique une pipeline qui n'existe pas.
+  // -------------------------------------------------------------------------
+
+  it('expose les réglages d analyse et les seuils réellement appliqués', async () => {
+    const server = makeServer();
+    const response = await call(server, 'GET', '/settings');
+    expect(response.status).toBe(200);
+    expect(response.json.settings).toEqual({ bypassClaudeForHighConfidence: false });
+    expect(response.json.thresholds).toEqual({ reject_below: REJECT_BELOW, direct_alert_above: DIRECT_ALERT_ABOVE });
+  });
+
+  it('bascule le contournement de l arbitrage à chaud', async () => {
+    const server = makeServer();
+    const response = await call(server, 'POST', '/settings', {
+      bypassClaudeForHighConfidence: true,
+    });
+    expect(response.status).toBe(200);
+    expect(server.scanSettings.bypassClaudeForHighConfidence).toBe(true);
+
+    // Et le réglage tient d'une requête à l'autre.
+    const reread = await call(server, 'GET', '/settings');
+    expect((reread.json.settings as { bypassClaudeForHighConfidence: boolean }).bypassClaudeForHighConfidence).toBe(true);
+  });
+
+  it('refuse une valeur qui n est pas un booléen, et garde l ancien réglage', async () => {
+    const server = makeServer();
+    const response = await call(server, 'POST', '/settings', {
+      bypassClaudeForHighConfidence: 'oui',
+    });
+    expect(response.status).toBe(400);
+    expect(response.json.plain_language_summary).toBeTruthy();
+    expect(server.scanSettings.bypassClaudeForHighConfidence).toBe(false);
+  });
+
+  it('démarre avec le contournement demandé par l environnement', async () => {
+    const server = makeServer({ VULNPIPE_BYPASS_MASTER: 'true' });
+    expect(server.scanSettings.bypassClaudeForHighConfidence).toBe(true);
   });
 });

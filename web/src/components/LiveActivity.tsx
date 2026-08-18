@@ -30,14 +30,22 @@ import { useEffect, useState } from 'react';
 import type { StepEvent } from './ScanTimeline.tsx';
 import { stepTranslations, type StepName } from '../lib/step_translations.ts';
 import { useI18n } from '../i18n/context.tsx';
+import { Icon, type IconName } from './Icon.tsx';
 
 /** Entrées gardées à l'écran. Au-delà, l'ancien sort par le bas. */
 const FEED_LIMIT = 30;
 
-const ZONE_STYLE: Record<string, { icon: string; className: string }> = {
-  sain: { icon: '✅', className: 'vp-zone-safe' },
-  a_verifier: { icon: '🟠', className: 'vp-zone-grey' },
-  alerte: { icon: '🔴', className: 'vp-zone-alert' },
+/**
+ * Un bouclier par zone, décliné : intact, interrogé, alerté.
+ *
+ * Trois variantes du même objet plutôt que trois symboles sans rapport — l'œil
+ * lit la série d'un coup, et la couleur (posée par la classe, pas par l'icône)
+ * reste le seul signal fort.
+ */
+const ZONE_STYLE: Record<string, { icon: IconName; className: string }> = {
+  sain: { icon: 'shield-check', className: 'vp-zone-safe' },
+  a_verifier: { icon: 'shield-question', className: 'vp-zone-grey' },
+  alerte: { icon: 'shield-alert', className: 'vp-zone-alert' },
 };
 
 export interface LiveActivityProps {
@@ -240,8 +248,8 @@ export function LiveActivity({ events, currentStep, running, expectedRoutes }: L
             const zone = event.verdict ? ZONE_STYLE[event.verdict.zone]! : null;
             return (
               <li key={event.seq} className={zone?.className ?? 'vp-zone-failed'}>
-                <span className="vp-live-icon" aria-hidden="true">
-                  {zone?.icon ?? '⚠️'}
+                <span className="vp-live-icon">
+                  <Icon name={zone?.icon ?? 'warning'} size={18} />
                 </span>
                 <div>
                   <code className="vp-live-route">

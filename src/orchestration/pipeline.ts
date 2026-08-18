@@ -106,6 +106,15 @@ export interface PipelineOptions {
    * qui possède les ressources et les libère.
    */
   prepared?: PreparedScan;
+  /**
+   * Option « bypass » de `CLAUDE.md` §3 : les findings au-dessus de 0.7 sont
+   * remontés sans passer par le master.
+   *
+   * Réglable depuis l'interface (`POST /settings`) plutôt que figé au
+   * démarrage : c'est un arbitrage coût/qualité qui appartient à
+   * l'utilisateur, pas à l'exploitant du serveur.
+   */
+  bypassClaudeForHighConfidence?: boolean;
 }
 
 export interface PreparedScan {
@@ -353,7 +362,11 @@ export async function runScan(request: ScanRequest, options: PipelineOptions): P
     // --- 4. Agrégation ------------------------------------------------------
     currentStep = 'aggregation';
     emitter.emit('aggregation', 'running', t.aggregationRunning);
-    const aggregation = aggregate(findings, { routesAnalyzed: selection.routes.length, locale });
+    const aggregation = aggregate(findings, {
+      routesAnalyzed: selection.routes.length,
+      locale,
+      bypassClaudeForHighConfidence: options.bypassClaudeForHighConfidence === true,
+    });
     const candidates = [...aggregation.claude_payload, ...aggregation.direct_alerts];
     emitter.emit(
       'aggregation',

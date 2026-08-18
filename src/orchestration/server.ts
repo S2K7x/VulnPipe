@@ -44,7 +44,7 @@ app.server.listen(PORT, () => {
 
   console.log('\nFournisseurs :');
   for (const entry of describeProviders(process.env as never)) {
-    console.log(`  ${entry.available ? '✅' : '❌'} ${entry.id}${entry.why ? ` — ${entry.why}` : ''}`);
+    console.log(`  ${entry.available ? '[ok]  ' : '[--]  '}${entry.id}${entry.why ? ` — ${entry.why}` : ''}`);
   }
   console.log(
     `\nDétecteurs : ${app.settings.nodeProvider} | Arbitre : ${app.settings.masterProvider}`

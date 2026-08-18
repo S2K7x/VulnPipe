@@ -26,11 +26,16 @@
 import { useState } from 'react';
 
 import { useI18n } from '../i18n/context.tsx';
+import { Icon, type IconName } from './Icon.tsx';
 
 export type TargetKind = 'directory' | 'file' | 'github';
 
 const TARGET_KINDS: TargetKind[] = ['directory', 'file', 'github'];
-const TARGET_ICONS: Record<TargetKind, string> = { directory: '📁', file: '📄', github: '🌐' };
+const TARGET_ICONS: Record<TargetKind, IconName> = {
+  directory: 'folder',
+  file: 'file',
+  github: 'globe',
+};
 
 export interface ScanLauncherProps {
   onLaunch: (input: {
@@ -39,16 +44,26 @@ export interface ScanLauncherProps {
     mode: 'full_scan' | 'incremental_scan';
   }) => void;
   busy?: boolean;
-  /** Chemin proposé par défaut (exemple fourni avec le projet). */
+  /** Chemin proposé par défaut (dernière cible mémorisée, ou exemple). */
   defaultPath?: string;
+  /** Onglet de cible présélectionné, depuis les réglages. */
+  defaultKind?: TargetKind;
+  /** Étendue présélectionnée, depuis les réglages. */
+  defaultMode?: 'full_scan' | 'incremental_scan';
 }
 
 
-export function ScanLauncher({ onLaunch, busy, defaultPath = '' }: ScanLauncherProps) {
+export function ScanLauncher({
+  onLaunch,
+  busy,
+  defaultPath = '',
+  defaultKind = 'directory',
+  defaultMode = 'full_scan',
+}: ScanLauncherProps) {
   const { t } = useI18n();
-  const [kind, setKind] = useState<TargetKind>('directory');
+  const [kind, setKind] = useState<TargetKind>(defaultKind);
   const [target, setTarget] = useState(defaultPath);
-  const [mode, setMode] = useState<'full_scan' | 'incremental_scan'>('full_scan');
+  const [mode, setMode] = useState<'full_scan' | 'incremental_scan'>(defaultMode);
   const [commitSha, setCommitSha] = useState('');
   const [touched, setTouched] = useState(false);
 
@@ -78,7 +93,8 @@ export function ScanLauncher({ onLaunch, busy, defaultPath = '' }: ScanLauncherP
             onClick={() => setKind(id)}
             disabled={busy}
           >
-            {TARGET_ICONS[id]} {t.launcher.tabs[id]}
+            <Icon name={TARGET_ICONS[id]} size={16} />
+            {t.launcher.tabs[id]}
           </button>
         ))}
       </div>

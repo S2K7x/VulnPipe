@@ -17,6 +17,7 @@ export default defineConfig({
       '/webhook': `http://localhost:${API_PORT}`,
       '/runs': `http://localhost:${API_PORT}`,
       '/providers': `http://localhost:${API_PORT}`,
+      '/settings': `http://localhost:${API_PORT}`,
     },
   },
 });

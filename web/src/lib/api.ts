@@ -53,6 +53,16 @@ export interface RunSnapshot {
   routes_failed: number | null;
 }
 
+export interface ScanSettings {
+  bypassClaudeForHighConfidence: boolean;
+}
+
+export interface ScanSettingsResponse {
+  settings: ScanSettings;
+  /** Bornes des trois zones, telles que le serveur les applique réellement. */
+  thresholds: { reject_below: number; direct_alert_above: number };
+}
+
 /** Erreur portant un message déjà lisible par un non-développeur. */
 export class ApiError extends Error {
   readonly friendly: string;
@@ -125,6 +135,24 @@ export const api = {
       '/providers',
       { method: 'POST', body: JSON.stringify({ ...next, locale: getCurrentLocale() }) }
     );
+  },
+
+  /**
+   * Réglages d'analyse (arbitrage) + seuils de confiance appliqués.
+   *
+   * Séparé de `/providers` : ce n'est pas le même objet de décision. Le
+   * fournisseur dit AVEC QUOI on analyse, ceci dit CE QUI est envoyé à
+   * l'arbitre payant.
+   */
+  getScanSettings() {
+    return request<ScanSettingsResponse>('/settings');
+  },
+
+  setScanSettings(next: Partial<ScanSettings>) {
+    return request<ScanSettingsResponse>('/settings', {
+      method: 'POST',
+      body: JSON.stringify({ ...next, locale: getCurrentLocale() }),
+    });
   },
 
   /**

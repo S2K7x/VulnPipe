@@ -10,7 +10,7 @@
  *
  *     set -a; source .env; set +a
  *
- * Conséquence observée : `npm run dev` démarrait avec « ❌ gemini —
+ * Conséquence observée : `npm run dev` démarrait avec « [--] gemini —
  * GEMINI_API_KEY absente du fichier .env » ALORS QUE la clé était bien dans
  * `.env`. Le message était même trompeur : il accusait le fichier, alors que
  * le fichier n'avait jamais été ouvert. Pire, le résultat dépendait de

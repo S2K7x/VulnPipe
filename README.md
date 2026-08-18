@@ -364,6 +364,31 @@ un refus immédiat qu'une panne au milieu d'un scan.
 
 ---
 
+## L'onglet Réglages
+
+Deux natures de réglage, annoncées comme telles sur chaque bloc — sans cette
+distinction, on croit régler son confort de lecture et on modifie ce que la
+pipeline facture.
+
+**Appliqué sur le serveur** (vaut pour tous les onglets ouverts) :
+
+| Réglage | Effet |
+|---|---|
+| Moteur de détection / d'arbitrage | Voir la section précédente. |
+| Contournement de l'arbitrage | Les findings au-dessus de `0.7` vont droit au rapport, sans repasser par le modèle payant. Plus rapide et moins cher — mais c'est aussi l'arbitre qui rédige le résumé en langage clair, donc le rapport est plus brut. |
+| Seuils de confiance | Affichés d'après la réponse du serveur (`GET /settings`), jamais recopiés dans l'interface. |
+
+**Gardé dans le navigateur** (préférences personnelles, `localStorage`) :
+
+| Réglage | Effet |
+|---|---|
+| Cible et étendue par défaut | Pré-remplit le lanceur ; la dernière cible peut être mémorisée. |
+| Seuil d'acceptation automatique | Sous ce montant, le devis est accepté sans demander. `0` par défaut, donc désactivé : rien n'est dépensé sans un geste explicite tant que tu n'as pas fixé toi-même une limite. Un devis non chiffrable n'est jamais accepté tout seul. |
+| Détail technique / explications ouverts | Confort de lecture, ne change rien à ce qui est analysé. |
+| État du service et des moteurs | Ce que l'interface arrive à joindre, avec la raison quand une clé manque. |
+
+---
+
 ## Commandes
 
 | Commande | Ce qu'elle fait |

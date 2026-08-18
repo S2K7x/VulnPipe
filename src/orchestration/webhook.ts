@@ -11,6 +11,8 @@
  *   GET  /runs/:id          état + rapport final + consommation
  *   GET  /providers         fournisseurs disponibles (sélecteur de l'UI)
  *   POST /providers         change le fournisseur actif
+ *   GET  /settings          réglages d'analyse (arbitrage) + seuils
+ *   POST /settings          change un réglage d'analyse
  */
 
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -22,6 +24,7 @@ import {
   type ProviderName,
 } from '../nodes/shared/llm/factory.ts';
 import { LlmError, type LlmClient } from '../nodes/shared/llm/types.ts';
+import { DIRECT_ALERT_ABOVE, REJECT_BELOW } from '../aggregator/aggregator.ts';
 import { StepEmitter, type StepEvent } from './step-events.ts';
 import { UsageTracker } from './usage-tracker.ts';
 import { runScan, selectRoutes, type PreparedScan, type ScanMode, type ScanRequest, type ScanResult } from './pipeline.ts';
@@ -73,9 +76,23 @@ export interface ProviderSettings {
   masterModel?: string;
 }
 
+/**
+ * Réglages d'analyse modifiables à chaud, distincts du choix des moteurs.
+ *
+ * Ils vivent sur le serveur et non dans le navigateur : ils changent ce que la
+ * pipeline FAIT (et ce qu'elle facture), pas la façon dont l'écran l'affiche.
+ * Deux onglets ouverts sur la même machine doivent lancer des scans réglés à
+ * l'identique.
+ */
+export interface ScanSettings {
+  /** Remonte les findings > 0.7 sans arbitrage Claude (CLAUDE.md §3). */
+  bypassClaudeForHighConfidence: boolean;
+}
+
 export interface ServerOptions {
   queue: JobQueue<ScanRequest & { run_id: string; estimate_id?: string }>;
   settings?: Partial<ProviderSettings>;
+  scanSettings?: Partial<ScanSettings>;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -91,6 +108,12 @@ export function createVulnPipeServer(options: ServerOptions) {
       env.VULNPIPE_MASTER_PROVIDER ??
       'anthropic') as ProviderName,
     masterModel: options.settings?.masterModel ?? env.VULNPIPE_MASTER_MODEL,
+  };
+
+  const scanSettings: ScanSettings = {
+    bypassClaudeForHighConfidence:
+      options.scanSettings?.bypassClaudeForHighConfidence ??
+      env.VULNPIPE_BYPASS_MASTER === 'true',
   };
 
   /** Indique quels fournisseurs sont réellement utilisables (clé présente). */
@@ -174,6 +197,7 @@ export function createVulnPipeServer(options: ServerOptions) {
         emitter,
         tracker: new UsageTracker(),
         prepared: stored?.prepared,
+        bypassClaudeForHighConfidence: scanSettings.bypassClaudeForHighConfidence,
       });
       state.result = result;
       state.status = 'done';
@@ -540,6 +564,48 @@ export function createVulnPipeServer(options: ServerOptions) {
       return;
     }
 
+    // GET /settings — réglages d'analyse + seuils appliqués
+    if (req.method === 'GET' && url.pathname === '/settings') {
+      json(res, 200, {
+        settings: scanSettings,
+        thresholds: { reject_below: REJECT_BELOW, direct_alert_above: DIRECT_ALERT_ABOVE },
+      });
+      return;
+    }
+
+    // POST /settings — bascule à chaud
+    if (req.method === 'POST' && url.pathname === '/settings') {
+      let body: Partial<ScanSettings>;
+      try {
+        body = (await readBody(req)) as Partial<ScanSettings>;
+      } catch (error) {
+        json(res, 400, { error: (error as Error).message });
+        return;
+      }
+
+      if (
+        body.bypassClaudeForHighConfidence !== undefined &&
+        typeof body.bypassClaudeForHighConfidence !== 'boolean'
+      ) {
+        const locale = normalizeLocale((body as { locale?: string }).locale);
+        json(res, 400, {
+          error: 'bypassClaudeForHighConfidence must be a boolean',
+          plain_language_summary: messages(locale).providers.invalidSetting,
+        });
+        return;
+      }
+
+      if (body.bypassClaudeForHighConfidence !== undefined) {
+        scanSettings.bypassClaudeForHighConfidence = body.bypassClaudeForHighConfidence;
+      }
+
+      json(res, 200, {
+        settings: scanSettings,
+        thresholds: { reject_below: REJECT_BELOW, direct_alert_above: DIRECT_ALERT_ABOVE },
+      });
+      return;
+    }
+
     json(res, 404, { error: 'unknown route' });
   };
 
@@ -549,5 +615,5 @@ export function createVulnPipeServer(options: ServerOptions) {
     });
   });
 
-  return { server, runs, emitters, settings, providerAvailability, handler, notesFor, estimates };
+  return { server, runs, emitters, settings, scanSettings, providerAvailability, handler, notesFor, estimates };
 }

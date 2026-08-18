@@ -17,6 +17,7 @@ import {
 } from '../lib/step_translations.ts';
 import { useI18n } from '../i18n/context.tsx';
 import { StepExplanationToggle } from './PipelineExplainer.tsx';
+import { Icon, type IconName } from './Icon.tsx';
 
 export interface StepEvent {
   run_id: string;
@@ -60,6 +61,8 @@ export interface ScanTimelineProps {
    * ce qui est vérifié ni pourquoi.
    */
   showExplanations?: boolean;
+  /** Déplie d'emblée ces explications (préférence de lecture). */
+  openExplanations?: boolean;
   /** Étape en cours, mise en avant visuellement. */
   currentStep?: StepName | null;
 }
@@ -110,19 +113,26 @@ export function reduceEvents(events: StepEvent[]): StepState[] {
   return STEP_ORDER.filter((step) => byStep.has(step)).map((step) => byStep.get(step)!);
 }
 
+/**
+ * Pastille d'état d'une étape.
+ *
+ * C'est le seul endroit de la timeline où l'icône porte l'information SEULE :
+ * le libellé à côté nomme l'étape, pas son issue. Elle est donc annoncée
+ * (`title`), contrairement aux icônes décoratives du reste de l'écran.
+ */
 function StatusIcon({ status }: { status: StepState['status'] }) {
   const { t } = useI18n();
-  const map: Record<string, { symbol: string; label: string }> = {
-    running: { symbol: '⏳', label: t.timeline.statusRunning },
-    done: { symbol: '✅', label: t.timeline.statusDone },
-    failed: { symbol: '⚠️', label: t.timeline.statusFailed },
-    skipped: { symbol: '⏭️', label: t.timeline.statusSkipped },
-    pending: { symbol: '·', label: t.timeline.statusPending },
+  const map: Record<string, { icon: IconName; label: string }> = {
+    running: { icon: 'clock', label: t.timeline.statusRunning },
+    done: { icon: 'check', label: t.timeline.statusDone },
+    failed: { icon: 'warning', label: t.timeline.statusFailed },
+    skipped: { icon: 'skip', label: t.timeline.statusSkipped },
+    pending: { icon: 'dot', label: t.timeline.statusPending },
   };
   const entry = map[status] ?? map.pending!;
   return (
-    <span className="vp-status" role="img" aria-label={entry.label} title={entry.label}>
-      {entry.symbol}
+    <span className="vp-status">
+      <Icon name={entry.icon} size={17} title={entry.label} />
     </span>
   );
 }
@@ -131,6 +141,7 @@ export function ScanTimeline({
   events,
   showTechnicalDetail = false,
   showExplanations = false,
+  openExplanations = false,
   currentStep = null,
 }: ScanTimelineProps) {
   const { locale, t } = useI18n();
@@ -162,8 +173,8 @@ export function ScanTimeline({
           >
             <div className="vp-timeline-head">
               <StatusIcon status={state.status} />
-              <span className="vp-step-icon" aria-hidden="true">
-                {translation.icon}
+              <span className="vp-step-icon">
+                <Icon name={translation.icon} size={17} />
               </span>
               <strong className="vp-step-label">{translation.label}</strong>
             </div>
@@ -183,7 +194,9 @@ export function ScanTimeline({
               </div>
             )}
 
-            {showExplanations && <StepExplanationToggle step={state.step} />}
+            {showExplanations && (
+              <StepExplanationToggle step={state.step} defaultOpen={openExplanations} />
+            )}
 
             {showTechnicalDetail && state.details.length > 0 && (
               <div className="vp-step-details">

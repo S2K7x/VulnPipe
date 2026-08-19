@@ -28,6 +28,7 @@ import { LlmError, type EffortLevel, type LlmClient } from '../nodes/shared/llm/
 import { DIRECT_ALERT_ABOVE, REJECT_BELOW } from '../aggregator/aggregator.ts';
 import { StepEmitter, type StepEvent } from './step-events.ts';
 import { UsageTracker } from './usage-tracker.ts';
+import { InMemoryArbitrationCache } from '../master/arbitration-cache.ts';
 import { runScan, selectRoutes, type PreparedScan, type ScanMode, type ScanRequest, type ScanResult } from './pipeline.ts';
 import { estimateScan, prepareTarget, type ScanEstimate } from './estimator.ts';
 import { resolveTarget, TargetError } from './scan-target.ts';
@@ -104,6 +105,9 @@ export interface ServerOptions {
 export function createVulnPipeServer(options: ServerOptions) {
   const env = options.env ?? process.env;
   const runs = new Map<string, RunState>();
+  // Un seul cache pour tout le serveur : son intérêt est justement de survivre
+  // d'un scan au suivant. Il disparaît au redémarrage, comme l'état des runs.
+  const arbitrationCache = new InMemoryArbitrationCache();
   const emitters = new Map<string, StepEmitter>();
 
   const settings: ProviderSettings = {
@@ -206,6 +210,7 @@ export function createVulnPipeServer(options: ServerOptions) {
         tracker: new UsageTracker(),
         prepared: stored?.prepared,
         bypassClaudeForHighConfidence: scanSettings.bypassClaudeForHighConfidence,
+        arbitrationCache,
       });
       state.result = result;
       state.status = 'done';
@@ -637,5 +642,16 @@ export function createVulnPipeServer(options: ServerOptions) {
     });
   });
 
-  return { server, runs, emitters, settings, scanSettings, providerAvailability, handler, notesFor, estimates };
+  return {
+    server,
+    runs,
+    emitters,
+    settings,
+    scanSettings,
+    providerAvailability,
+    handler,
+    notesFor,
+    estimates,
+    arbitrationCache,
+  };
 }

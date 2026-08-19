@@ -26,11 +26,24 @@ export type ProviderName =
   | 'openrouter'
   | 'custom';
 
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+/**
+ * Niveaux proposés, du moins au plus consommateur.
+ *
+ * `''` = on ne force rien, le modèle applique son propre défaut. C'est le
+ * premier choix de la liste parce que c'est le seul qui n'engage pas la
+ * personne sur un arbitrage qu'elle n'a pas encore les moyens d'évaluer.
+ */
+export const EFFORT_CHOICES: (EffortLevel | '')[] = ['', 'low', 'medium', 'high', 'xhigh', 'max'];
+
 export interface ProviderSettings {
   nodeProvider: ProviderName;
   nodeModel?: string;
+  nodeEffort?: EffortLevel;
   masterProvider: ProviderName;
   masterModel?: string;
+  masterEffort?: EffortLevel;
 }
 
 export interface ProviderAvailability {
@@ -47,13 +60,21 @@ export interface ProviderSwitcherProps {
 }
 
 
-/** Modèles conseillés par fournisseur, pour éviter la saisie à l'aveugle. */
+/**
+ * Modèles conseillés, ordonnés du MOINS au PLUS consommateur.
+ *
+ * L'ordre porte l'information : le premier de la liste est celui qui coûte le
+ * moins de jetons, le dernier celui qui en consomme le plus mais raisonne le
+ * mieux. On ne parle jamais de « gratuit » ou de « payant » — ce que la
+ * personne doit comprendre, c'est vers quel modèle partent ses jetons et
+ * pourquoi, pas seulement si sa carte est débitée.
+ */
 const SUGGESTED_MODELS: Partial<Record<ProviderName, string[]>> = {
-  gemini: ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
+  gemini: ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-3.5-flash'],
   openrouter: ['openrouter/free', 'openai/gpt-oss-20b:free', 'z-ai/glm-5.2:free'],
-  anthropic: ['claude-opus-5', 'claude-sonnet-5'],
+  anthropic: ['claude-haiku-4-5', 'claude-sonnet-5', 'claude-opus-5'],
   // « default » = le modèle de la session Claude Code, sans rien forcer.
-  'claude-subscription': ['default', 'claude-opus-5', 'claude-sonnet-5'],
+  'claude-subscription': ['default', 'claude-haiku-4-5', 'claude-sonnet-5', 'claude-opus-5'],
   ollama: ['qwen3.5:9b'],
 };
 
@@ -63,20 +84,24 @@ function ProviderSelect({
   description,
   value,
   model,
+  effort,
   available,
   disabled,
   onProvider,
   onModel,
+  onEffort,
 }: {
   id: string;
   label: string;
   description: string;
   value: ProviderName;
   model?: string;
+  effort?: EffortLevel;
   available: ProviderAvailability[];
   disabled?: boolean;
   onProvider: (next: ProviderName) => void;
   onModel: (next: string) => void;
+  onEffort: (next: EffortLevel | undefined) => void;
 }) {
   const { t } = useI18n();
   const current = available.find((entry) => entry.id === value);
@@ -127,6 +152,28 @@ function ProviderSelect({
           <option key={suggestion} value={suggestion} />
         ))}
       </datalist>
+      <p className="vp-field-help">{t.providers.modelHint}</p>
+
+      {/* Profondeur de réflexion — le levier le plus direct sur la
+          consommation, donc celui qu'il faut expliquer et non juste offrir. */}
+      <label htmlFor={`${id}-effort`} className="vp-provider-model-label">
+        {t.providers.effortLabel}
+      </label>
+      <select
+        id={`${id}-effort`}
+        value={effort ?? ''}
+        disabled={disabled}
+        onChange={(event) =>
+          onEffort(event.target.value === '' ? undefined : (event.target.value as EffortLevel))
+        }
+      >
+        {EFFORT_CHOICES.map((level) => (
+          <option key={level || 'default'} value={level}>
+            {t.providers.effortNames[level || 'default']}
+          </option>
+        ))}
+      </select>
+      <p className="vp-field-help">{t.providers.effortHint}</p>
     </div>
   );
 }
@@ -161,10 +208,12 @@ export function ProviderSwitcher({ settings, available, onChange, disabled }: Pr
         description={t.providers.detectionHelp}
         value={draft.nodeProvider}
         model={draft.nodeModel}
+        effort={draft.nodeEffort}
         available={available}
         disabled={disabled || saving}
         onProvider={(nodeProvider) => setDraft((d) => ({ ...d, nodeProvider, nodeModel: undefined }))}
         onModel={(nodeModel) => setDraft((d) => ({ ...d, nodeModel: nodeModel || undefined }))}
+        onEffort={(nodeEffort) => setDraft((d) => ({ ...d, nodeEffort }))}
       />
 
       <ProviderSelect
@@ -173,12 +222,14 @@ export function ProviderSwitcher({ settings, available, onChange, disabled }: Pr
         description={t.providers.arbitrationHelp}
         value={draft.masterProvider}
         model={draft.masterModel}
+        effort={draft.masterEffort}
         available={available}
         disabled={disabled || saving}
         onProvider={(masterProvider) =>
           setDraft((d) => ({ ...d, masterProvider, masterModel: undefined }))
         }
         onModel={(masterModel) => setDraft((d) => ({ ...d, masterModel: masterModel || undefined }))}
+        onEffort={(masterEffort) => setDraft((d) => ({ ...d, masterEffort }))}
       />
 
       {error && (

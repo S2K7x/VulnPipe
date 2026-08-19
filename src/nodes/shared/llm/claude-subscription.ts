@@ -43,7 +43,14 @@
  * ============================================================================
  */
 
-import { LlmError, type JsonSchema, type LlmClient, type LlmRequest, type LlmResponse } from './types.ts';
+import {
+  LlmError,
+  type EffortLevel,
+  type JsonSchema,
+  type LlmClient,
+  type LlmRequest,
+  type LlmResponse,
+} from './types.ts';
 
 /** Valeur d'`apiKeySource` quand aucune clé API n'est en jeu — donc abonnement. */
 export const SUBSCRIPTION_KEY_SOURCE = 'none';
@@ -74,11 +81,20 @@ export interface AgentSdkMessage {
 
 export type AgentSdkQuery = (args: {
   prompt: string;
-  options: { systemPrompt: string; allowedTools: string[]; maxTurns: number; model?: string };
+  options: {
+    systemPrompt: string;
+    allowedTools: string[];
+    maxTurns: number;
+    model?: string;
+    /** Vérifié dans les types du SDK 0.3.235 : `effort?: EffortLevel` sur les options. */
+    effort?: EffortLevel;
+  };
 }) => AsyncIterable<AgentSdkMessage>;
 
 export interface ClaudeSubscriptionOptions {
   model?: string;
+  /** Profondeur de raisonnement. Absent = défaut de la session Claude Code. */
+  effort?: EffortLevel;
   /** Injectable pour les tests : aucun appel réseau dans la suite hors ligne. */
   query?: AgentSdkQuery;
   /** Reçoit l'avertissement quand la facturation n'est pas celle attendue. */
@@ -155,11 +171,13 @@ export class ClaudeSubscriptionClient implements LlmClient {
   // pas le strip-only mode de Node (limitation notée en Phase 2, ROADMAP.md).
   readonly provider = 'claude-subscription';
   readonly model: string;
+  private readonly effort?: EffortLevel;
   private readonly injectedQuery?: AgentSdkQuery;
   private readonly onWarning?: (message: string) => void;
 
   constructor(options: ClaudeSubscriptionOptions = {}) {
     this.model = options.model ?? DEFAULT_SUBSCRIPTION_MODEL;
+    this.effort = options.effort;
     this.injectedQuery = options.query;
     this.onWarning = options.onWarning;
   }
@@ -180,6 +198,7 @@ export class ClaudeSubscriptionClient implements LlmClient {
           allowedTools: [],
           maxTurns: 1,
           ...(this.model === DEFAULT_SUBSCRIPTION_MODEL ? {} : { model: this.model }),
+          ...(this.effort ? { effort: this.effort } : {}),
         },
       });
 

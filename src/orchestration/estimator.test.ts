@@ -114,7 +114,7 @@ describe('estimateScan', () => {
     expect(estimate.plain_language_summary).toContain('Estimated cost');
   });
 
-  it('annonce la gratuité sur un moteur local', async () => {
+  it('annonce l absence de coût en jetons sur un moteur local', async () => {
     const target = await resolveTarget(FIXTURE);
     const ready = await prepareTarget(target);
     try {
@@ -129,7 +129,11 @@ describe('estimateScan', () => {
         env: {},
       });
       expect(estimate.cost.free).toBe(true);
-      expect(estimate.plain_language_summary).toContain('free');
+      // Vocabulaire volontaire : on parle de JETONS consommés, pas de
+      // « gratuit » — le but est que la personne comprenne où part la
+      // consommation, pas seulement qu'elle ne paie rien.
+      expect(estimate.plain_language_summary).toContain('costs you nothing');
+      expect(estimate.plain_language_summary).toContain('token');
     } finally {
       await ready.close();
       await target.cleanup();

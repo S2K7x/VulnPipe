@@ -42,16 +42,28 @@ const USER_SCOPE_FIELDS = [
   'customer_id',
 ];
 
-/** Méthodes de persistance : le point où une lecture non filtrée devient une fuite. */
-const DATA_ACCESS_METHODS = [
+/**
+ * Verbes qui, en PRÉFIXE d'un nom de méthode, désignent un accès aux données :
+ * le point où une lecture non filtrée devient une fuite.
+ *
+ * Bug corrigé (voir NIGHTLY_LOG.md) : une liste de noms exacts (`findone`,
+ * `findbyid`...) rate silencieusement toute convention ORM composée —
+ * `findOneBy` (TypeORM), `findByIdAndUpdate` (Mongoose), `updateOne`... Un nom
+ * non reconnu n'est pas comptabilisé comme non filtré ; si une AUTRE requête
+ * de la même méthode est filtrée, le verdict décisif "sain" tombe quand même,
+ * à coût nul, alors que la requête non reconnue n'a jamais été examinée.
+ * Même famille de faux négatif silencieux que le bug corrigé la nuit du
+ * 2026-08-18, côté nom de méthode plutôt que côté fenêtre de recherche.
+ *
+ * Un préfixe capture la famille du verbe sans énumérer chaque variante. Un
+ * faux positif ici (un nom qui commence par "get" mais n'est pas une requête)
+ * ne fait au pire que renvoyer une route vers le LLM au lieu de la trancher
+ * gratuitement — jamais vers un verdict "sain" à tort. C'est la direction
+ * sûre pour ce garde-fou.
+ */
+const DATA_ACCESS_PREFIXES = [
   'find',
-  'findone',
-  'findbyid',
-  'findfirst',
-  'findunique',
-  'findall',
   'get',
-  'getbyid',
   'query',
   'select',
   'fetch',
@@ -185,7 +197,8 @@ function mentionsUserScope(code: string): boolean {
 }
 
 function isDataAccess(methodName: string): boolean {
-  return DATA_ACCESS_METHODS.includes(methodName.toLowerCase());
+  const lower = methodName.toLowerCase();
+  return DATA_ACCESS_PREFIXES.some((prefix) => lower.startsWith(prefix));
 }
 
 /** Analyse déterministe d'un bundle de contexte. Ne fait aucun appel réseau. */

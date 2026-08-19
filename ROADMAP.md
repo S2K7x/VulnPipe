@@ -749,9 +749,13 @@ On annonce un problème ligne 3 à quelqu'un qui ne sait pas lire du code.
       davantage pour la confiance dans le verdict qu'un numéro de ligne.
 - [x] **3. « Ouvrir dans mon éditeur »** ✅ livré (2026-08-19)
       Lien `vscode://` / `cursor://` vers le fichier à la bonne ligne.
-- [ ] **4. Exporter et partager le rapport**
-      Copier en Markdown, télécharger. Aujourd'hui rien ne sort de l'écran :
-      impossible de garder une trace ou de montrer le rapport à quelqu'un.
+- [x] **4. Exporter et partager le rapport** ✅ livré (2026-08-19)
+      Copier en Markdown, télécharger. Rien ne sortait de l'écran : impossible
+      de garder une trace ou de montrer le rapport à quelqu'un.
+      Trois points tenus dans `web/src/lib/report-markdown.ts` : le langage
+      simple reste AVANT le jargon, les alertes écartées restent comptées, et
+      aucun chemin absolu ne fuit dans un document fait pour être partagé
+      (`source_root` est délibérément absent).
 
 ### Niveau 2 — passer du scan ponctuel au suivi
 

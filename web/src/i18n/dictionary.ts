@@ -164,6 +164,10 @@ export interface Dictionary {
     copyFailed: string;
     openInEditor: (editor: string) => string;
     openInEditorHelp: string;
+    copyReport: string;
+    downloadReport: string;
+    exportHelp: string;
+    reportCopied: string;
   };
   usage: {
     heading: string;
@@ -556,6 +560,11 @@ const EN: Dictionary = {
     copyFailed: 'Copy failed. Select the text and copy it by hand.',
     openInEditor: (editor) => `Open in ${editor}`,
     openInEditorHelp: 'Opens the file at the right line, if that editor is installed.',
+    copyReport: 'Copy the report',
+    downloadReport: 'Download',
+    exportHelp:
+      'To keep a record, attach it to a ticket, or show it to someone who can help you.',
+    reportCopied: 'Report copied',
   },
   usage: {
     heading: 'What this scan actually used',
@@ -1127,6 +1136,11 @@ const FR: Dictionary = {
     copyFailed: "La copie n'a pas fonctionné. Sélectionne le texte et copie-le à la main.",
     openInEditor: (editor) => `Ouvrir dans ${editor}`,
     openInEditorHelp: "Ouvre le fichier à la bonne ligne, si cet éditeur est installé.",
+    copyReport: 'Copier le rapport',
+    downloadReport: 'Télécharger',
+    exportHelp:
+      "Pour en garder une trace, le joindre à un ticket, ou le montrer à quelqu'un qui peut t'aider.",
+    reportCopied: 'Rapport copié',
   },
   usage: {
     heading: 'Ce que ce scan a consommé',

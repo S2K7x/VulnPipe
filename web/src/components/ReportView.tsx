@@ -14,6 +14,7 @@ import { explainTerm, severityLabel } from '../lib/step_translations.ts';
 import { useI18n } from '../i18n/context.tsx';
 import { usePreferences } from '../lib/preferences.ts';
 import { buildFixPrompt } from '../lib/fix-prompt.ts';
+import { reportFileName, reportToMarkdown, type ReportMeta } from '../lib/report-markdown.ts';
 import { Icon } from './Icon.tsx';
 
 export interface ReportFinding {
@@ -311,7 +312,75 @@ export function FindingCard({
   );
 }
 
-export function ReportView({ report }: { report: SecurityReport }) {
+/**
+ * Sortir le rapport de l'écran : copier en Markdown, ou télécharger.
+ *
+ * Point 4 de la file d'attente du `ROADMAP.md`. Deux gestes plutôt qu'un :
+ * copier sert à coller dans une conversation ou un ticket, télécharger sert à
+ * archiver. Ils ne se remplacent pas.
+ *
+ * Le téléchargement passe par une URL d'objet, révoquée juste après : sans
+ * révocation, chaque export garderait le rapport en mémoire jusqu'au
+ * rechargement de la page.
+ */
+export function ReportExport({ report, meta }: { report: SecurityReport; meta: ReportMeta }) {
+  const { locale, t } = useI18n();
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
+
+  const markdown = (): string => reportToMarkdown(report, locale, meta);
+
+  const copy = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(markdown());
+      setState('copied');
+      window.setTimeout(() => setState('idle'), 2500);
+    } catch {
+      setState('failed');
+    }
+  };
+
+  const download = (): void => {
+    const blob = new Blob([markdown()], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = reportFileName(meta);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="vp-report-export">
+      <div className="vp-report-export-actions">
+        <button type="button" className="vp-action" onClick={copy}>
+          <Icon name="document" />
+          {state === 'copied' ? t.report.reportCopied : t.report.copyReport}
+        </button>
+        <button type="button" className="vp-action" onClick={download}>
+          <Icon name="file" />
+          {t.report.downloadReport}
+        </button>
+      </div>
+      <span className="vp-field-help">{t.report.exportHelp}</span>
+      {state === 'failed' && (
+        <p className="vp-code-note" role="alert">
+          {t.report.copyFailed}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function ReportView({
+  report,
+  target = null,
+}: {
+  report: SecurityReport;
+  /** Cible analysée, pour l'en-tête du rapport exporté. */
+  target?: { label: string } | null;
+}) {
   const { t } = useI18n();
   const { scan_summary: summary, findings } = report;
 
@@ -330,6 +399,7 @@ export function ReportView({ report }: { report: SecurityReport }) {
             </li>
           )}
         </ul>
+        <ReportExport report={report} meta={{ targetLabel: target?.label ?? null }} />
       </header>
 
       {findings.length === 0 ? (

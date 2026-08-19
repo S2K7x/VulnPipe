@@ -290,7 +290,7 @@ export function App() {
 
           {running && <PipelineExplainer currentStep={state.currentStep ?? undefined} />}
 
-          {report && <ReportView report={report} />}
+          {report && <ReportView report={report} target={state.snapshot?.target ?? null} />}
           {usage && <UsagePanel usage={usage} />}
 
           {(state.phase === 'done' || state.phase === 'failed') && (

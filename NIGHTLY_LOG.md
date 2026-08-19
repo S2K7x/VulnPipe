@@ -1,5 +1,63 @@
 # Journal des nuits
 
+## 2026-08-19
+
+**Sujet** : en mode `incremental_scan`, un commit qui ne touchait qu'un service
+ne faisait réanalyser aucune route — VulnPipe répondait « rien à revérifier »
+sur le commit qui venait justement d'introduire la faille.
+
+**Résultat** : PR ouverte (branche `nightly/2026-08-19-incremental-service-deps`).
+
+**Ce que j'ai appris** :
+- La condition de rattachement dans `selectRoutes` (`src/orchestration/pipeline.ts`)
+  était `fichier.includes(route.controller)`. `route.controller` est le NOM DE
+  CLASSE (`OrderController`), le fichier est un CHEMIN (`src/order.controller.ts`) :
+  la condition ne pouvait jamais être vraie. Ce n'était pas une heuristique
+  faible, c'était du code mort — et son commentaire affirmait le contraire
+  (« un service modifié rend vulnérables les routes qui l'appellent »). Un
+  commentaire qui décrit une intention non implémentée est pire qu'une absence
+  de commentaire : il empêche de relire la ligne.
+- Le mode incrémental n'avait AUCUN test sur son chemin nominal. Les trois
+  tests existants couvraient uniquement les replis (pas de commit, diff
+  incalculable), c'est-à-dire les cas où la fonction ne sélectionne rien. Le
+  seul endroit capable de produire un faux négatif — décider ce qu'on
+  n'analyse PAS — n'était vérifié nulle part. Leçon générale : un test sur les
+  branches d'échec d'une fonction de filtrage ne dit rien de son filtre.
+- Créer un vrai dépôt git jetable dans un test est bon marché : `git init` +
+  deux commits, hors ligne, ~40 ms pour cinq dépôts. Pas besoin de simuler
+  `git diff` — c'est justement l'accord entre la forme réelle de sa sortie et
+  nos chemins qui cassait.
+- `git diff --name-only` renvoie des chemins relatifs à la RACINE DU DÉPÔT,
+  pas au `cwd` passé à `execFileSync`. Nos `route.file` sont relatifs à la
+  racine INDEXÉE. Sur un monorepo dont on n'indexe qu'un paquet, plus rien ne
+  correspondait — deuxième faux négatif, silencieux lui aussi. `--relative`
+  aligne les deux et exclut au passage ce qui est hors du dossier indexé.
+- `injection_map` (indexeur, Phase 1) suffit à relier une route à ses services,
+  transitivement, sans aucun appel LLM ni relecture du disque. Le contexte
+  nécessaire existait déjà dans l'index ; il n'était pas consulté.
+
+**À ne pas refaire** :
+- Ne pas rétablir de rattachement par ressemblance de noms (chemin contre nom
+  de classe, ou `order` contre `OrderController`). C'est ce qui a masqué le
+  bug : ça a l'air d'un lien, ça n'en est pas un. L'index sait qui appelle
+  qui — il faut le lui demander.
+- Piste écartée : traiter un fichier modifié non rattaché à une route comme
+  « sans effet » et rester en incrémental. Moins coûteux, mais c'est
+  exactement le raisonnement « dans le doute, tout va bien » que ce produit
+  ne peut pas se permettre. J'ai pris le repli en scan complet, annoncé par
+  un message. Contrepartie assumée et notée dans le ROADMAP : sur un dépôt
+  réel, l'incrémental retombera probablement souvent en complet. Il faut le
+  MESURER sur un vrai dépôt avant d'affiner — pas le deviner.
+
+**Vérifications exécutées** :
+```
+npm run typecheck   # 0 erreur
+npm test            # 264/264 verts (259 avant + 5 nouveaux, aucun ignoré/affaibli)
+npm run build       # web/dist généré, 247 kB / 78 kB gzip
+```
+Aucun script consommant du quota LLM n'a été lancé (bench/measure/report/e2e) :
+la sélection de routes est purement déterministe et se teste hors ligne.
+
 ## 2026-08-18
 
 **Sujet** : le scanner IDOR déterministe pouvait classer une route vulnérable

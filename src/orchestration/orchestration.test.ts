@@ -6,8 +6,11 @@
  * la qualité d'un modèle. Le vrai bout-en-bout réseau est dans `npm run e2e`.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { InMemoryQueue, createQueue } from './queue.ts';
@@ -195,6 +198,218 @@ describe('Sélection des routes selon le mode', () => {
     );
     expect(result.effectiveMode).toBe('full_scan');
     expect(result.note).toContain('not under version control, or unknown commit');
+  });
+});
+
+// ===========================================================================
+// Sélection incrémentale sur un vrai diff git
+//
+// Les tests ci-dessus ne couvraient que les REPLIS (pas de commit, diff
+// incalculable) : le chemin nominal — un vrai `git diff`, un vrai choix de
+// routes — n'était exercé nulle part. C'est pourtant lui qui décide ce qui
+// n'est PAS analysé, donc le seul endroit du mode incrémental capable de
+// produire un faux négatif.
+//
+// Ces dépôts sont créés sur disque et commités : `git` est local, hors ligne,
+// et l'ensemble tourne en quelques dizaines de millisecondes.
+// ===========================================================================
+
+const temporaryRepositories: string[] = [];
+
+afterAll(() => {
+  for (const directory of temporaryRepositories) rmSync(directory, { recursive: true, force: true });
+});
+
+/**
+ * Crée un dépôt git jetable et y joue une suite de commits.
+ * `commits` : liste de jeux de fichiers, appliqués et commités dans l'ordre.
+ */
+function makeRepository(commits: Record<string, string>[], subdirectory = ''): string {
+  const root = mkdtempSync(join(tmpdir(), 'vulnpipe-select-'));
+  temporaryRepositories.push(root);
+  const git = (...args: string[]): void => {
+    execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=test', ...args], {
+      cwd: root,
+      stdio: 'ignore',
+    });
+  };
+  git('init', '-q', '.');
+  for (const files of commits) {
+    for (const [name, content] of Object.entries(files)) {
+      const full = join(root, name);
+      mkdirSync(dirname(full), { recursive: true });
+      writeFileSync(full, content);
+    }
+    git('add', '-A');
+    git('commit', '-qm', 'commit');
+  }
+  return subdirectory ? join(root, subdirectory) : root;
+}
+
+function headOf(root: string): string {
+  return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+}
+
+/** Les routes telles que le serveur MCP les publierait pour cet index. */
+function listRoutesOf(index: ReturnType<typeof buildRepoIndex>): ListedRoute[] {
+  return index.endpoints.map((e) => ({
+    route: e.endpoint.route,
+    http_method: e.endpoint.http_method.toUpperCase(),
+    controller: e.controller.controller,
+    handler: e.endpoint.handler,
+    file: e.endpoint.source.file,
+    guards: e.endpoint.framework_metadata.guards,
+    is_unguarded: e.endpoint.framework_metadata.is_unguarded,
+  }));
+}
+
+const CONTROLLER = `@Controller('orders')
+export class OrderController {
+  constructor(private orderService: OrderService) {}
+
+  @Get('/:id')
+  async getOrder(@Param('id') id: string) {
+    return this.orderService.findById(id);
+  }
+}
+`;
+
+const OTHER_CONTROLLER = `@Controller('health')
+export class HealthController {
+  @Get('/')
+  async check() {
+    return { ok: true };
+  }
+}
+`;
+
+const SERVICE_SAFE = `export class OrderService {
+  async findById(id: string, userId: string) {
+    return this.db.orders.findOne({ id, userId });
+  }
+}
+`;
+
+const SERVICE_VULNERABLE = `export class OrderService {
+  async findById(id: string) {
+    return this.db.orders.findOne({ id });
+  }
+}
+`;
+
+describe('Sélection incrémentale sur un vrai diff git', () => {
+  it('réanalyse la route quand SEUL le service qu elle appelle a changé', () => {
+    // Le scénario le plus banal du produit : le contrôleur ne bouge pas, mais
+    // le service perd son filtre `userId`. La faille est introduite par ce
+    // commit. Si la route n'est pas resélectionnée, VulnPipe annonce « rien à
+    // revérifier » sur le commit qui vient de créer la faille.
+    const root = makeRepository([
+      { 'package.json': '{}', 'src/order.controller.ts': CONTROLLER, 'src/order.service.ts': SERVICE_SAFE },
+      { 'src/order.service.ts': SERVICE_VULNERABLE },
+    ]);
+    const repoIndex = buildRepoIndex(root);
+
+    const result = selectRoutes(
+      listRoutesOf(repoIndex),
+      { repo_path: root, mode: 'incremental_scan', commit_sha: headOf(root) },
+      repoIndex,
+      root
+    );
+
+    expect(result.effectiveMode).toBe('incremental_scan');
+    expect(result.routes.map((r) => r.route)).toEqual(['/orders/:id']);
+  });
+
+  it('n analyse pas les routes qu un changement ne peut pas atteindre', () => {
+    // La contrepartie : le mode n'a d'intérêt que s'il élague vraiment. Une
+    // route sans aucun lien avec le fichier modifié doit rester de côté.
+    const root = makeRepository([
+      {
+        'package.json': '{}',
+        'src/order.controller.ts': CONTROLLER,
+        'src/order.service.ts': SERVICE_SAFE,
+        'src/health.controller.ts': OTHER_CONTROLLER,
+      },
+      { 'src/order.service.ts': SERVICE_VULNERABLE },
+    ]);
+    const repoIndex = buildRepoIndex(root);
+
+    const result = selectRoutes(
+      listRoutesOf(repoIndex),
+      { repo_path: root, mode: 'incremental_scan', commit_sha: headOf(root) },
+      repoIndex,
+      root
+    );
+
+    expect(result.routes.map((r) => r.route)).toEqual(['/orders/:id']);
+  });
+
+  it('retombe en full_scan et le DIT si un fichier de code modifié n est rattaché à aucune route', () => {
+    // On ne sait pas ce que ce fichier influence : l'index ne le relie à
+    // aucune route. Conclure « rien à revérifier » serait une affirmation
+    // qu'on ne peut pas soutenir — donc on analyse tout, et on l'annonce.
+    const root = makeRepository([
+      { 'package.json': '{}', 'src/order.controller.ts': CONTROLLER, 'src/order.service.ts': SERVICE_SAFE },
+      { 'src/pricing.ts': 'export class Pricing {\n  total(n: number) {\n    return n;\n  }\n}\n' },
+    ]);
+    const repoIndex = buildRepoIndex(root);
+
+    const result = selectRoutes(
+      listRoutesOf(repoIndex),
+      { repo_path: root, mode: 'incremental_scan', commit_sha: headOf(root) },
+      repoIndex,
+      root
+    );
+
+    expect(result.effectiveMode).toBe('full_scan');
+    expect(result.routes).toHaveLength(1);
+    expect(result.note).toContain('src/pricing.ts');
+  });
+
+  it('un fichier hors code (documentation) ne déclenche pas de scan complet', () => {
+    const root = makeRepository([
+      { 'package.json': '{}', 'src/order.controller.ts': CONTROLLER, 'src/order.service.ts': SERVICE_SAFE },
+      { 'README.md': '# doc\n' },
+    ]);
+    const repoIndex = buildRepoIndex(root);
+
+    const result = selectRoutes(
+      listRoutesOf(repoIndex),
+      { repo_path: root, mode: 'incremental_scan', commit_sha: headOf(root) },
+      repoIndex,
+      root
+    );
+
+    expect(result.effectiveMode).toBe('incremental_scan');
+    expect(result.routes).toHaveLength(0);
+    expect(result.note).toContain('nothing to re-check');
+  });
+
+  it('trouve les fichiers modifiés quand le code vit dans un sous-dossier du dépôt', () => {
+    // `git diff --name-only` renvoie des chemins relatifs à la RACINE DU DÉPÔT,
+    // pas au dossier courant. Sur un monorepo dont on n'indexe qu'un paquet,
+    // aucun chemin ne correspondait et le scan concluait « rien à revérifier ».
+    const indexRoot = makeRepository(
+      [
+        {
+          'packages/api/package.json': '{}',
+          'packages/api/src/order.controller.ts': CONTROLLER,
+          'packages/api/src/order.service.ts': SERVICE_SAFE,
+        },
+        { 'packages/api/src/order.service.ts': SERVICE_VULNERABLE },
+      ],
+      'packages/api'
+    );
+    const repoIndex = buildRepoIndex(indexRoot);
+
+    const result = selectRoutes(
+      listRoutesOf(repoIndex),
+      { repo_path: indexRoot, mode: 'incremental_scan', commit_sha: headOf(indexRoot) },
+      repoIndex,
+      indexRoot
+    );
+
+    expect(result.routes.map((r) => r.route)).toEqual(['/orders/:id']);
   });
 });
 

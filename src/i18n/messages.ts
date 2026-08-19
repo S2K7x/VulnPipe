@@ -58,6 +58,7 @@ export interface Messages {
     noCommit: string;
     diffUnavailable: string;
     nothingChanged: string;
+    changeNotAttributable: (examples: string[], total: number) => string;
   };
 
   /** Devis avant scan. */
@@ -235,6 +236,11 @@ const EN: Messages = {
     diffUnavailable:
       'Changes could not be determined (project not under version control, or unknown commit): the whole project was analyzed.',
     nothingChanged: 'No address is affected by this commit: nothing to re-check.',
+    changeNotAttributable: (examples, total) => {
+      const list = examples.join(', ');
+      const rest = total > examples.length ? ` and ${total - examples.length} other file(s)` : '';
+      return `We could not tell which addresses depend on ${list}${rest}, so the whole project was analyzed rather than risk missing something.`;
+    },
   },
 
   estimate: {
@@ -444,6 +450,11 @@ const FR: Messages = {
       "Les modifications n'ont pas pu être déterminées (dépôt non versionné ou commit introuvable) : tout le projet a été réanalysé.",
     nothingChanged:
       "Aucune adresse concernée par les modifications de ce commit : rien à réanalyser.",
+    changeNotAttributable: (examples, total) => {
+      const liste = examples.join(', ');
+      const reste = total > examples.length ? ` et ${total - examples.length} autre(s) fichier(s)` : '';
+      return `On n'a pas su déterminer quelles adresses dépendent de ${liste}${reste} : tout le projet a été réanalysé plutôt que de risquer de passer à côté de quelque chose.`;
+    },
   },
 
   estimate: {

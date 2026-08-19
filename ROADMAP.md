@@ -559,9 +559,29 @@ Cocher au fur et à mesure. Chaque phase correspond à un fichier
         traiter avant tout usage sérieux.
       - L'état des runs est en mémoire : un redémarrage du serveur perd
         l'historique.
-      - `incremental_scan` relie une route à un fichier modifié par le nom du
+      - ~~`incremental_scan` relie une route à un fichier modifié par le nom du
         contrôleur ; un service partagé modifié ne déclenche pas encore la
-        réanalyse des routes qui en dépendent.
+        réanalyse des routes qui en dépendent.~~ **Corrigé (nuit du
+        2026-08-19)** : la sélection suit maintenant la carte d'injection du
+        constructeur, transitivement (`routeDependencies` dans `pipeline.ts`).
+        La condition précédente (`chemin.includes(nomDuContrôleur)`) ne
+        pouvait jamais être vraie — `src/order.controller.ts` ne contient pas
+        `OrderController` — donc seul le fichier du contrôleur lui-même
+        déclenchait une réanalyse. Le commit qui retire le filtre `userId`
+        d'un service affichait « rien à revérifier ».
+      - Limites connues de cette sélection, à traiter plus tard :
+        - Elle suit l'injection par constructeur (convention NestJS). Un
+          service importé et instancié à la main, ou appelé via une fonction
+          exportée, n'est pas relié à sa route.
+        - Un fichier de code modifié que l'index ne rattache à aucune route
+          fait retomber le scan en complet, avec un message qui l'explique.
+          Direction volontairement prudente (jamais de faux négatif
+          silencieux), mais sur un dépôt réel où beaucoup de fichiers ne sont
+          liés à aucune route, l'incrémental retombera souvent en complet.
+          À mesurer sur un vrai dépôt avant d'affiner.
+        - La suppression d'un fichier apparaît dans le diff mais plus dans
+          l'index : elle n'est donc rattachée à rien et déclenche le repli
+          ci-dessus. C'est le bon comportement, mais par accident.
 
 ## Après le MVP (hors scope immédiat)
 - Mode Full Scan (premier scan sans diff) avec chunking par route

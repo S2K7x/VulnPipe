@@ -153,6 +153,17 @@ export interface Dictionary {
     hideTechnical: string;
     whyVerdict: string;
     referenceCategory: string;
+    problemType: string;
+    whereLabel: string;
+    codeHeading: string;
+    codeUnavailable: string;
+    codeTruncated: string;
+    copyFixPrompt: string;
+    copyFixPromptHelp: string;
+    copied: string;
+    copyFailed: string;
+    openInEditor: (editor: string) => string;
+    openInEditorHelp: string;
   };
   usage: {
     heading: string;
@@ -294,6 +305,8 @@ export interface Dictionary {
     displayKicker: string;
     displayTitle: string;
     displayLede: string;
+    editorLabel: string;
+    editorHelp: string;
     technicalByDefaultLabel: string;
     technicalByDefaultHelp: string;
     explanationsLabel: string;
@@ -535,6 +548,18 @@ const EN: Dictionary = {
     hideTechnical: 'Hide technical detail',
     whyVerdict: 'Why this verdict',
     referenceCategory: 'Reference category',
+    problemType: 'Type of problem',
+    whereLabel: 'Where',
+    codeHeading: 'The code involved',
+    codeUnavailable: 'We could not read the code at this spot.',
+    codeTruncated: 'Some lines were shortened to stay readable.',
+    copyFixPrompt: 'Copy a fix request',
+    copyFixPromptHelp:
+      'Copies a ready-made request — the code, the diagnosis and what to ask — to paste into the AI assistant you code with.',
+    copied: 'Copied',
+    copyFailed: 'Copy failed. Select the text and copy it by hand.',
+    openInEditor: (editor) => `Open in ${editor}`,
+    openInEditorHelp: 'Opens the file at the right line, if that editor is installed.',
   },
   usage: {
     heading: 'What this scan actually used',
@@ -836,6 +861,9 @@ const EN: Dictionary = {
     displayKicker: 'Display',
     displayTitle: 'What you see',
     displayLede: 'Reading preferences. They change nothing to what is analyzed.',
+    editorLabel: 'My code editor',
+    editorHelp:
+      'Which editor the "open the file" link on a finding should launch. Nothing is installed or detected: pick the one you use.',
     technicalByDefaultLabel: 'Open technical detail by default',
     technicalByDefaultHelp:
       'Findings normally show the plain summary first. Turn this on if you read the code yourself.',
@@ -1107,6 +1135,18 @@ const FR: Dictionary = {
     hideTechnical: 'Masquer le détail technique',
     whyVerdict: 'Pourquoi ce verdict',
     referenceCategory: 'Catégorie de référence',
+    problemType: 'Type de problème',
+    whereLabel: 'Où',
+    codeHeading: 'Le code concerné',
+    codeUnavailable: "On n'a pas pu relire le code à cet endroit.",
+    codeTruncated: 'Certaines lignes ont été raccourcies pour rester lisibles.',
+    copyFixPrompt: 'Copier une demande de correction',
+    copyFixPromptHelp:
+      "Copie une demande toute prête — le code, le diagnostic et ce qu'il faut demander — à coller dans l'assistant IA avec lequel tu codes.",
+    copied: 'Copié',
+    copyFailed: "La copie n'a pas fonctionné. Sélectionne le texte et copie-le à la main.",
+    openInEditor: (editor) => `Ouvrir dans ${editor}`,
+    openInEditorHelp: "Ouvre le fichier à la bonne ligne, si cet éditeur est installé.",
   },
   usage: {
     heading: 'Ce que ce scan a consommé',
@@ -1408,6 +1448,9 @@ const FR: Dictionary = {
     displayKicker: 'Affichage',
     displayTitle: 'Ce que tu vois',
     displayLede: "Préférences de lecture. Elles ne changent rien à ce qui est analysé.",
+    editorLabel: 'Mon éditeur de code',
+    editorHelp:
+      "Quel éditeur le lien « ouvrir le fichier » d'une faille doit lancer. Rien n'est installé ni détecté : choisis celui que tu utilises.",
     technicalByDefaultLabel: 'Ouvrir le détail technique par défaut',
     technicalByDefaultHelp:
       "Les résultats montrent normalement le résumé clair en premier. Active ceci si tu lis le code toi-même.",

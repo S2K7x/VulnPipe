@@ -60,6 +60,17 @@ const IDOR_FINDING: ReportFinding = {
     "Il faut vérifier que la commande appartient bien à la personne connectée avant de la renvoyer.",
   owasp_category: 'A01:2021 – Broken Access Control',
   evidence: 'code',
+  code_excerpt: {
+    start_line: 10,
+    lines: [
+      '  @Get(\'/:id\')',
+      '  async getOrder(@Param(\'id\') id: string) {',
+      '    return this.orderService.findById(id);',
+      '  }',
+    ],
+    highlight_line: 12,
+    truncated: false,
+  },
   local_confidence_score: 0.9,
   detected_by: ['idor-node'],
 };
@@ -186,6 +197,7 @@ describe('ReportView', () => {
     },
     findings: [IDOR_FINDING],
     dismissed: [{ vulnerability: 'IDOR', route: '/tags/:id', http_method: 'GET' }],
+    source_root: '/home/moi/projet',
   };
 
   it('met le verdict global en haut, avant tout détail', () => {
@@ -253,6 +265,7 @@ describe('ReportView', () => {
           scan_summary: { ...report.scan_summary, total_findings: 0, critical: 0, warning: 0 },
           findings: [],
           dismissed: [],
+          source_root: null,
         }}
       />
     );

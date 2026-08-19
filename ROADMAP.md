@@ -753,6 +753,75 @@ serveur. `npx tsc --noEmit` propre, build de production 293 kB / 91 kB gzip.
 
 ---
 
+## Améliorations d'expérience — file d'attente
+
+Liste établie le 2026-08-19, à partir d'un état des lieux de l'interface et
+d'une revue de ce que font les autres outils (Semgrep, Snyk, tableaux de bord
+AppSec). Ordonnée par rapport valeur/effort, pas par ordre d'envie.
+
+Le fil conducteur : le produit sait **trouver** une faille et l'**expliquer**,
+mais il ne sait pas encore aider à la **corriger**, ni montrer qu'on progresse.
+
+### Niveau 1 — rendre une faille actionnable
+
+Une faille affiche aujourd'hui « `order.service.ts` (ligne 3) » et s'arrête là.
+On annonce un problème ligne 3 à quelqu'un qui ne sait pas lire du code.
+
+- [x] **1. Bouton « copier le prompt de correction »** ✅ livré (2026-08-19)
+      Met dans le presse-papier un texte prêt à coller dans un assistant IA :
+      code fautif, explication, direction de correction, garde-fous.
+      Justification : la cible du produit ne corrigera pas à la main — elle
+      redemandera à une IA. Autant lui donner le bon prompt. Coût : nul,
+      entièrement déterministe.
+- [x] **2. Afficher l'extrait de code fautif** ✅ livré (2026-08-19)
+      Ligne en cause surlignée, quelques lignes de contexte. Voir le code fait
+      davantage pour la confiance dans le verdict qu'un numéro de ligne.
+- [x] **3. « Ouvrir dans mon éditeur »** ✅ livré (2026-08-19)
+      Lien `vscode://` / `cursor://` vers le fichier à la bonne ligne.
+- [ ] **4. Exporter et partager le rapport**
+      Copier en Markdown, télécharger. Aujourd'hui rien ne sort de l'écran :
+      impossible de garder une trace ou de montrer le rapport à quelqu'un.
+
+### Niveau 2 — passer du scan ponctuel au suivi
+
+- [ ] **5. Historique et comparaison entre deux scans**
+      Nouveau / corrigé / toujours présent, avec la tendance. C'est le pattern
+      standard des tableaux de bord sécurité. Sans lui, chaque scan repart de
+      zéro et l'utilisateur ne voit jamais qu'il progresse — c'est aussi ce qui
+      donne son sens au mode incrémental.
+      **Prérequis** : la persistance (l'état des runs est en mémoire, cf.
+      limitations de la Phase 6). **Décision à prendre avant de coder** : format
+      de stockage. `CLAUDE.md` §5 dit « JSON structuré en V1 ».
+- [ ] **6. Statut par faille : corrigé / risque accepté / faux positif**
+      Avec justification obligatoire. Remède standard à la fatigue d'alerte.
+      **Piège à ne pas reproduire** : le taux de correction doit EXCLURE les
+      rejets, sinon on améliore son score en masquant des alertes. Un finding
+      écarté reste visible sur sa propre pile, jamais supprimé.
+- [ ] **7. Cache d'arbitrage** (déjà listé en limitation de la Phase 5)
+      Techniquement une optimisation, vécue comme une fonctionnalité :
+      relancer un scan sur du code inchangé devient instantané et gratuit.
+
+### Niveau 3 — aller là où la personne travaille
+
+- [ ] **8. GitHub Action + hook pre-commit**
+      Les résultats doivent arriver dans les outils déjà utilisés plutôt que
+      dans un onglet à ouvrir. Le webhook existe : l'essentiel est l'emballage.
+- [ ] **9. Commentaire automatique sur la pull request** — suite logique du 8.
+
+### Niveau 4 — confiance et agrément
+
+- [ ] **10. Travailler l'état « aucune faille trouvée »**
+      Un rapport vide ressemble à une panne. Le projet a pour règle « une panne
+      ne doit jamais ressembler à un succès » ; la réciproque est vraie aussi.
+      Il faut dire CE QUI A ÉTÉ VÉRIFIÉ, pas afficher du vide.
+- [ ] **11. Progression dans le temps** — failles ouvertes semaine après
+      semaine. À ne brancher qu'après le point 5, sur des données réelles.
+
+### Écarté pour l'instant
+
+- Score de sécurité global sur 100 : un chiffre unique invite à optimiser le
+  chiffre. Le point 11, adossé à des failles réelles, dit la même chose sans
+  inventer une métrique.
 ## Authentification par abonnement Claude (Pro / Max) — livrée le 2026-08-19
 
 `VULNPIPE_LLM_PROVIDER=claude-subscription` fait tourner VulnPipe sur

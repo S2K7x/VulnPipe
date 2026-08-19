@@ -496,6 +496,12 @@ export async function runScan(request: ScanRequest, options: PipelineOptions): P
       routesAnalyzed: selection.routes.length,
       routesFailed: failures.length,
       locale,
+      // Lu ICI, tant que la cible est montée : le `finally` ci-dessous
+      // supprime le clone temporaire d'un dépôt GitHub.
+      sourceRoot: target.indexRoot,
+      // Un clone temporaire ne survit pas au scan : proposer « ouvrir dans mon
+      // éditeur » vers un dossier effacé serait un lien mort.
+      sourceRootPersists: target.kind !== 'github',
     });
     emitter.emit('report', 'done', report.scan_summary.plain_language_intro, {
       usage: tracker.snapshot(),

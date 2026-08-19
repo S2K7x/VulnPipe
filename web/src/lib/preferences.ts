@@ -26,6 +26,17 @@ import { useCallback, useSyncExternalStore } from 'react';
 export type TargetKind = 'directory' | 'file' | 'github';
 export type ScanMode = 'full_scan' | 'incremental_scan';
 
+/**
+ * Éditeur visé par le lien « ouvrir dans mon éditeur ».
+ *
+ * Les trois partagent le même schéma d'URL (`<éditeur>://file/<chemin>:<ligne>`).
+ * Le choix est une préférence et non une détection : un navigateur ne peut pas
+ * savoir quels éditeurs sont installés, et une détection ratée donnerait un
+ * lien mort sans explication.
+ */
+export type EditorTarget = 'vscode' | 'cursor' | 'windsurf';
+export const EDITORS: EditorTarget[] = ['vscode', 'cursor', 'windsurf'];
+
 export interface Preferences {
   /** Onglet de cible présélectionné dans le lanceur. */
   defaultKind: TargetKind;
@@ -47,6 +58,8 @@ export interface Preferences {
   technicalByDefault: boolean;
   /** Garde les explications « à quoi ça sert ? » dépliées. */
   explanationsByDefault: boolean;
+  /** Éditeur ouvert par le lien d'une faille. */
+  editor: EditorTarget;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -57,6 +70,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   autoConfirmUnderUsd: 0,
   technicalByDefault: false,
   explanationsByDefault: false,
+  editor: 'vscode',
 };
 
 const STORAGE_KEY = 'vulnpipe.preferences';
@@ -96,6 +110,9 @@ export function sanitize(input: Partial<Preferences>): Preferences {
     autoConfirmUnderUsd: Number.isFinite(amount) && amount > 0 ? Math.min(amount, 100) : 0,
     technicalByDefault: input.technicalByDefault === true,
     explanationsByDefault: input.explanationsByDefault === true,
+    editor: EDITORS.includes(input.editor as EditorTarget)
+      ? (input.editor as EditorTarget)
+      : DEFAULT_PREFERENCES.editor,
   };
 }
 

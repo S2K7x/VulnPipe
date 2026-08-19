@@ -1498,3 +1498,120 @@ th {
 
 .vp-landing-steps .vp-explain-why { color: var(--muted); font-size: 0.92rem; max-width: 82ch; }
 .vp-landing-steps .vp-explain-analogy { color: var(--faint); font-style: italic; font-size: 0.86rem; margin: 0; }
+
+/* ---------------------------------------------------------------------------
+   Faille actionnable : le code en cause, et quoi en faire.
+
+   Le bloc de code est volontairement sobre — pas de coloration syntaxique.
+   Le seul élément mis en avant est LA LIGNE FAUTIVE : c'est la seule
+   information que le lecteur doit trouver sans la chercher. Une coloration
+   complète mettrait toutes les lignes au même niveau d'attention.
+--------------------------------------------------------------------------- */
+
+.vp-code {
+  margin: 0.9rem 0 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.vp-code-caption {
+  padding: 0.45rem 0.75rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.vp-code-pre {
+  margin: 0;
+  padding: 0.5rem 0;
+  /* Le code déborde horizontalement plutôt que de casser la mise en page. */
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.vp-code-line {
+  display: flex;
+  gap: 0.85rem;
+  padding: 0 0.75rem;
+  white-space: pre;
+}
+
+.vp-code-line-faulty {
+  background: var(--red-bg);
+  /* La couleur seule ne suffit pas : un liseré porte la même information pour
+     qui ne distingue pas les rouges. */
+  box-shadow: inset 3px 0 0 var(--red);
+}
+
+.vp-code-number {
+  min-width: 2.5ch;
+  text-align: right;
+  color: var(--faint);
+  user-select: none;
+}
+
+.vp-code-line-faulty .vp-code-number { color: var(--red); font-weight: 700; }
+.vp-code-text { color: var(--fg); }
+
+.vp-code-note,
+.vp-code-missing {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.vp-code-note { padding: 0 0.75rem 0.5rem; }
+
+.vp-finding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.6rem 1rem;
+  margin-top: 0.9rem;
+}
+
+.vp-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--fg);
+  font-size: 0.88rem;
+  font-family: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.vp-action:hover { border-color: var(--accent); color: var(--accent); }
+.vp-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* `align-items: flex-start` : sans lui, le bouton s'étire sur toute la largeur
+   de la colonne et prend l'allure d'une bannière plutôt que d'une action. */
+.vp-fix-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  max-width: 46ch;
+}
+
+.vp-select {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.vp-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

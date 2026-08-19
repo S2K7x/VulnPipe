@@ -23,7 +23,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { api, ApiError, type ScanSettings } from '../lib/api.ts';
-import { usePreferences } from '../lib/preferences.ts';
+import { usePreferences, type EditorTarget } from '../lib/preferences.ts';
 import { useI18n } from '../i18n/context.tsx';
 import { LOCALES, dictionary, type Locale } from '../i18n/dictionary.ts';
 import { Icon } from './Icon.tsx';
@@ -316,6 +316,23 @@ export function SettingsPage({ providers, onProviderChange, busy }: SettingsPage
           checked={preferences.explanationsByDefault}
           onChange={(next) => update({ explanationsByDefault: next })}
         />
+
+        <div className="vp-setting">
+          <span className="vp-setting-text">
+            <strong>{s.editorLabel}</strong>
+            <span className="vp-field-help">{s.editorHelp}</span>
+          </span>
+          <select
+            className="vp-select"
+            aria-label={s.editorLabel}
+            value={preferences.editor}
+            onChange={(e) => update({ editor: e.target.value as EditorTarget })}
+          >
+            <option value="vscode">VS Code</option>
+            <option value="cursor">Cursor</option>
+            <option value="windsurf">Windsurf</option>
+          </select>
+        </div>
 
         <div className="vp-setting">
           <span className="vp-setting-text">

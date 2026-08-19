@@ -7,6 +7,7 @@
  * réseau.
  */
 
+import { readCodeExcerpt, type CodeExcerpt } from './code-excerpt.ts';
 import { DEFAULT_LOCALE, type Locale } from '../i18n/locale.ts';
 import { messages } from '../i18n/messages.ts';
 import type { AggregationResult, AggregatedFinding } from '../aggregator/aggregator.ts';
@@ -46,6 +47,11 @@ export interface ReportFinding {
   evidence: 'code' | 'summary_only' | 'not_arbitrated';
   local_confidence_score: number;
   detected_by: string[];
+  /**
+   * Le code en cause, capturé pendant le scan (voir `code-excerpt.ts`).
+   * `null` quand il n'a pas pu être lu — la faille reste affichée sans lui.
+   */
+  code_excerpt: CodeExcerpt | null;
 }
 
 export interface ScanSummary {
@@ -74,6 +80,15 @@ export interface SecurityReport {
     local_confidence_score: number;
     claude_reasoning: string;
   }>;
+  /**
+   * Racine ABSOLUE du code analysé, quand elle survivra au scan.
+   *
+   * Sert au lien « ouvrir dans mon éditeur » : le navigateur a besoin d'un
+   * chemin absolu, alors que `finding.file` est relatif. `null` pour un dépôt
+   * GitHub — son clone temporaire est supprimé à la fin du scan, un lien vers
+   * ce chemin pointerait dans le vide.
+   */
+  source_root: string | null;
   /** Statistiques du run de l'Agrégateur, reprises telles quelles. */
   aggregator_stats: AggregationResult['stats'];
   arbiter: { provider: string; model: string; calls: number; input_tokens: number; output_tokens: number };
@@ -125,6 +140,18 @@ export interface BuildReportOptions {
   routesFailed?: number;
   /** Langue du rapport. */
   locale?: Locale;
+  /**
+   * Racine absolue du code analysé.
+   *
+   * Quand elle est fournie, chaque faille reçoit l'extrait de code en cause, lu
+   * MAINTENANT — la cible peut être un clone temporaire effacé juste après.
+   */
+  sourceRoot?: string;
+  /**
+   * Cette racine existera-t-elle encore après le scan ? Faux pour un dépôt
+   * GitHub. Décide de la présence du lien « ouvrir dans mon éditeur ».
+   */
+  sourceRootPersists?: boolean;
 }
 
 /** Assemble le rapport final à partir du résultat d'agrégation et de l'arbitrage. */
@@ -180,6 +207,7 @@ export function buildReport(
         evidence: 'not_arbitrated',
         local_confidence_score: finding.confidence_score,
         detected_by: finding.detected_by,
+        code_excerpt: null,
       });
       continue;
     }
@@ -218,6 +246,7 @@ export function buildReport(
       evidence: verdict.evidence,
       local_confidence_score: finding.confidence_score,
       detected_by: finding.detected_by,
+      code_excerpt: null,
     });
   }
 
@@ -253,8 +282,17 @@ export function buildReport(
 
   return {
     scan_summary: summary,
-    findings,
+    findings: options.sourceRoot
+      ? findings.map((finding) => ({
+          ...finding,
+          code_excerpt: readCodeExcerpt(options.sourceRoot!, finding.file, finding.line),
+        }))
+      : findings,
     dismissed,
+    source_root:
+      options.sourceRoot !== undefined && options.sourceRootPersists === true
+        ? options.sourceRoot
+        : null,
     aggregator_stats: aggregation.stats,
     arbiter: {
       provider: arbitration.provider,

@@ -451,8 +451,17 @@ Cocher au fur et à mesure. Chaque phase correspond à un fichier
       - Le `ContextProvider` passé à l'arbitre suppose que toutes les routes
         vivent dans le même index. Un scan multi-dépôts demandera d'associer
         chaque finding à son provider.
-      - Pas de cache d'arbitrage : deux scans successifs sur un code inchangé
-        repaient l'appel master.
+      - ~~Pas de cache d'arbitrage : deux scans successifs sur un code inchangé
+        repaient l'appel master.~~ **Corrigé (2026-08-19)** —
+        `src/master/arbitration-cache.ts`. La clé porte le CODE réellement
+        montré à l'arbitre, pas l'identifiant de la route : sans ça, le cache
+        resservirait « vulnérabilité confirmée » sur du code corrigé. Ne
+        mémorise ni les findings non arbitrés, ni les verdicts rendus sans
+        avoir vu le code — leur texte de preuve est constant, donc leur clé ne
+        bougerait pas quand le code change.
+        Reste ouvert : le cache vit en mémoire dans le serveur et ne survit pas
+        à un redémarrage. La persistance dépend de la décision de stockage du
+        point 5 de la file d'attente.
 
 - [x] **Phase 6 — Orchestration + UI** ✅ livrée — **MVP COMPLET**
       File de messages, déclenchement sur webhook Git, interface qui affiche la
@@ -573,9 +582,29 @@ Cocher au fur et à mesure. Chaque phase correspond à un fichier
         traiter avant tout usage sérieux.
       - L'état des runs est en mémoire : un redémarrage du serveur perd
         l'historique.
-      - `incremental_scan` relie une route à un fichier modifié par le nom du
+      - ~~`incremental_scan` relie une route à un fichier modifié par le nom du
         contrôleur ; un service partagé modifié ne déclenche pas encore la
-        réanalyse des routes qui en dépendent.
+        réanalyse des routes qui en dépendent.~~ **Corrigé (nuit du
+        2026-08-19)** : la sélection suit maintenant la carte d'injection du
+        constructeur, transitivement (`routeDependencies` dans `pipeline.ts`).
+        La condition précédente (`chemin.includes(nomDuContrôleur)`) ne
+        pouvait jamais être vraie — `src/order.controller.ts` ne contient pas
+        `OrderController` — donc seul le fichier du contrôleur lui-même
+        déclenchait une réanalyse. Le commit qui retire le filtre `userId`
+        d'un service affichait « rien à revérifier ».
+      - Limites connues de cette sélection, à traiter plus tard :
+        - Elle suit l'injection par constructeur (convention NestJS). Un
+          service importé et instancié à la main, ou appelé via une fonction
+          exportée, n'est pas relié à sa route.
+        - Un fichier de code modifié que l'index ne rattache à aucune route
+          fait retomber le scan en complet, avec un message qui l'explique.
+          Direction volontairement prudente (jamais de faux négatif
+          silencieux), mais sur un dépôt réel où beaucoup de fichiers ne sont
+          liés à aucune route, l'incrémental retombera souvent en complet.
+          À mesurer sur un vrai dépôt avant d'affiner.
+        - La suppression d'un fichier apparaît dans le diff mais plus dans
+          l'index : elle n'est donc rattachée à rien et déclenche le repli
+          ci-dessus. C'est le bon comportement, mais par accident.
 
 ## Après le MVP (hors scope immédiat)
 - Mode Full Scan (premier scan sans diff) avec chunking par route
@@ -793,3 +822,102 @@ On annonce un problème ligne 3 à quelqu'un qui ne sait pas lire du code.
 - Score de sécurité global sur 100 : un chiffre unique invite à optimiser le
   chiffre. Le point 11, adossé à des failles réelles, dit la même chose sans
   inventer une métrique.
+## Authentification par abonnement Claude (Pro / Max) — livrée le 2026-08-19
+
+`VULNPIPE_LLM_PROVIDER=claude-subscription` fait tourner VulnPipe sur
+l'abonnement Claude que la personne paie déjà, au lieu d'une clé API facturée
+à l'appel. Fichier : `src/nodes/shared/llm/claude-subscription.ts`.
+
+### Pourquoi c'est légitime, et où est la limite
+
+Le chemin passe par le **Claude Agent SDK** (`@anthropic-ai/claude-agent-sdk`),
+le client officiel d'Anthropic, qui s'authentifie via la session Claude Code de
+l'utilisateur. La documentation Anthropic dit explicitement que l'usage du
+Claude Agent SDK, de `claude -p` et **des applications tierces** tire sur les
+limites d'usage de l'abonnement. Ce n'est donc pas un contournement.
+
+**La limite** : ça vaut pour un usage local et mono-utilisateur — le cadre posé
+par `CLAUDE.md` §6. Un service hébergé qui consommerait l'abonnement d'un tiers,
+ou qui collecterait des jetons OAuth d'utilisateurs, sortirait des conditions
+d'utilisation. VulnPipe ne demande et ne stocke aucun jeton : il constate
+seulement que Claude Code est installé sur la machine.
+
+### Ce que ça coûte réellement (mesuré, pas supposé)
+
+Sondage du 2026-08-19 (`@anthropic-ai/claude-agent-sdk` 0.3.235) : un appel
+trivial (8 jetons de sortie) transporte ~26 000 jetons de contexte — le harnais
+de Claude Code lui-même — même avec `allowedTools: []`. Ce volume est prélevé
+sur les limites de l'abonnement.
+
+**Conséquence pratique** : brancher ce fournisseur sur l'**arbitre** (un appel
+par scan, `CLAUDE.md` §2), pas sur les nodes de détection (un appel par route).
+
+### Le piège traité en code
+
+L'ordre de résolution des identifiants met `ANTHROPIC_API_KEY` **avant** la
+session Claude Code. Quelqu'un qui a exporté une clé pour un autre projet
+paierait à l'appel en croyant consommer son abonnement. Le champ `apiKeySource`
+du message `system/init` dit qui a gagné : il est lu, et l'écart est annoncé.
+`describeProviders()` refuse même d'annoncer ce fournisseur comme disponible
+quand une clé API est présente — il marcherait, mais il ne ferait pas ce que
+son nom promet.
+
+### Limites restantes
+- Le SDK ne propose pas de sortie structurée (pas d'équivalent
+  `output_config.format`) : le JSON est obtenu par consigne puis extrait du
+  texte. Toléré : bloc ``` autour, phrase avant/après. Au-delà, échec franc.
+- `total_cost_usd` renvoyé par le SDK est l'**équivalent au tarif API**, pas une
+  somme débitée. Il est remonté comme tel (`cost_usd: 0` + mention explicite) ;
+  l'afficher comme une dépense serait faux sur un abonnement.
+- Le surcoût de ~26 000 jetons par appel n'est pas réductible depuis l'API
+  publique du SDK. À re-mesurer si une option de harnais minimal apparaît.
+- Non testé sur un scan complet réel : seuls des sondages unitaires ont tourné.
+
+
+---
+
+## Choix du moteur, du modèle et de la profondeur — livré le 2026-08-19
+
+### Trois choix explicites, par rôle (détection / arbitrage)
+
+1. **API Claude ou abonnement** — deux fournisseurs distincts et nommés :
+   `anthropic` (clé API, facturé à l'appel) et `claude-subscription` (ton
+   abonnement Pro/Max via Claude Code). Le second n'a besoin d'aucune clé.
+2. **Le modèle** — champ libre avec suggestions, ordonnées **du moins gourmand
+   en jetons au plus capable**. L'ordre porte l'information.
+3. **La profondeur de réflexion** (`effort`) — `low` → `max`, ou « défaut du
+   modèle » pour ne rien forcer. Vérifié comme supporté des deux côtés :
+   `output_config.effort` sur l'API, `options.effort` sur le SDK (types du SDK
+   0.3.235 lus, pas supposés).
+
+Un niveau inconnu envoyé à `POST /providers` est **refusé** (400) et non ignoré :
+posé explicitement par la personne, l'avaler en silence lui ferait croire à un
+réglage appliqué. Un niveau inconnu dans `.env` retombe en revanche sur le
+défaut du modèle sans faire échouer le scan — une faute de frappe dans un
+réglage de confort ne doit pas coûter une analyse.
+
+### Vocabulaire : où vont les jetons, pas « gratuit vs payant »
+
+Le vocabulaire « modèle gratuit / modèle payant » a été retiré de toute
+l'interface et des messages serveur. Il décrivait l'effet sur la carte
+bancaire, pas la mécanique — et il devenait carrément faux sur un abonnement,
+où rien n'est débité à l'appel alors que des jetons sont bien consommés.
+
+Le vocabulaire retenu distingue trois choses différentes que « gratuit »
+confondait :
+
+| Avant | Maintenant | Ce que ça dit vraiment |
+|---|---|---|
+| « réglé gratuitement » | « tranché sans IA » | zéro jeton, aucun modèle appelé |
+| « modèle gratuit » | « modèle peu coûteux / léger » | des jetons, mais peu |
+| « modèle payant » | « modèle le plus capable » | là où part l'essentiel des jetons |
+
+### Limites restantes
+- Le palier de puissance d'un modèle est porté par l'ORDRE de la liste de
+  suggestions, pas par une étiquette par modèle. Une liste tenue à la main
+  vieillit ; un jour il faudra la tirer de l'API des modèles.
+- L'effort n'est pas ajusté automatiquement selon le rôle. On pourrait
+  proposer un défaut plus bas pour la détection (beaucoup d'appels) que pour
+  l'arbitrage (un seul) — non fait, ce serait un choix à la place de la personne.
+- `max_tokens` n'est pas exposé : un effort élevé sans marge de sortie peut
+  tronquer. À surveiller si quelqu'un remonte une réponse coupée.

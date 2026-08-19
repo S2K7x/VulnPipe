@@ -20,13 +20,15 @@ import { createServer as createHttpServer, type IncomingMessage, type ServerResp
 import {
   createLlmClient,
   describeProviders,
+  parseEffort,
   SUPPORTED_PROVIDERS,
   type ProviderName,
 } from '../nodes/shared/llm/factory.ts';
-import { LlmError, type LlmClient } from '../nodes/shared/llm/types.ts';
+import { LlmError, type EffortLevel, type LlmClient } from '../nodes/shared/llm/types.ts';
 import { DIRECT_ALERT_ABOVE, REJECT_BELOW } from '../aggregator/aggregator.ts';
 import { StepEmitter, type StepEvent } from './step-events.ts';
 import { UsageTracker } from './usage-tracker.ts';
+import { InMemoryArbitrationCache } from '../master/arbitration-cache.ts';
 import { runScan, selectRoutes, type PreparedScan, type ScanMode, type ScanRequest, type ScanResult } from './pipeline.ts';
 import { estimateScan, prepareTarget, type ScanEstimate } from './estimator.ts';
 import { resolveTarget, TargetError } from './scan-target.ts';
@@ -72,8 +74,12 @@ interface StoredEstimate {
 export interface ProviderSettings {
   nodeProvider: ProviderName;
   nodeModel?: string;
+  /** Profondeur de raisonnement des détecteurs. Absent = défaut du modèle. */
+  nodeEffort?: EffortLevel;
   masterProvider: ProviderName;
   masterModel?: string;
+  /** Profondeur de raisonnement de l'arbitre. Absent = défaut du modèle. */
+  masterEffort?: EffortLevel;
 }
 
 /**
@@ -99,15 +105,20 @@ export interface ServerOptions {
 export function createVulnPipeServer(options: ServerOptions) {
   const env = options.env ?? process.env;
   const runs = new Map<string, RunState>();
+  // Un seul cache pour tout le serveur : son intérêt est justement de survivre
+  // d'un scan au suivant. Il disparaît au redémarrage, comme l'état des runs.
+  const arbitrationCache = new InMemoryArbitrationCache();
   const emitters = new Map<string, StepEmitter>();
 
   const settings: ProviderSettings = {
     nodeProvider: (options.settings?.nodeProvider ?? env.VULNPIPE_LLM_PROVIDER ?? 'gemini') as ProviderName,
     nodeModel: options.settings?.nodeModel ?? env.VULNPIPE_LLM_MODEL,
+    nodeEffort: options.settings?.nodeEffort ?? parseEffort(env.VULNPIPE_LLM_EFFORT),
     masterProvider: (options.settings?.masterProvider ??
       env.VULNPIPE_MASTER_PROVIDER ??
       'anthropic') as ProviderName,
     masterModel: options.settings?.masterModel ?? env.VULNPIPE_MASTER_MODEL,
+    masterEffort: options.settings?.masterEffort ?? parseEffort(env.VULNPIPE_MASTER_EFFORT),
   };
 
   const scanSettings: ScanSettings = {
@@ -154,11 +165,12 @@ export function createVulnPipeServer(options: ServerOptions) {
     }
   }
 
-  function buildClient(provider: ProviderName, model?: string): LlmClient {
+  function buildClient(provider: ProviderName, model?: string, effort?: EffortLevel): LlmClient {
     return createLlmClient({
       ...env,
       VULNPIPE_LLM_PROVIDER: provider,
       VULNPIPE_LLM_MODEL: model,
+      VULNPIPE_LLM_EFFORT: effort,
     } as never);
   }
 
@@ -192,12 +204,13 @@ export function createVulnPipeServer(options: ServerOptions) {
 
     try {
       const result = await runScan(payload, {
-        nodeLlm: buildClient(settings.nodeProvider, settings.nodeModel),
-        masterLlm: buildClient(settings.masterProvider, settings.masterModel),
+        nodeLlm: buildClient(settings.nodeProvider, settings.nodeModel, settings.nodeEffort),
+        masterLlm: buildClient(settings.masterProvider, settings.masterModel, settings.masterEffort),
         emitter,
         tracker: new UsageTracker(),
         prepared: stored?.prepared,
         bypassClaudeForHighConfidence: scanSettings.bypassClaudeForHighConfidence,
+        arbitrationCache,
       });
       state.result = result;
       state.status = 'done';
@@ -529,6 +542,20 @@ export function createVulnPipeServer(options: ServerOptions) {
         }
       }
 
+      // Un niveau d'effort inconnu est REFUSÉ plutôt qu'ignoré : ici la
+      // personne l'a posé explicitement, l'avaler en silence lui ferait croire
+      // à un réglage appliqué qui ne l'est pas.
+      for (const key of ['nodeEffort', 'masterEffort'] as const) {
+        const value = body[key] as string | undefined;
+        if (value !== undefined && value !== null && parseEffort(value) === undefined) {
+          json(res, 400, {
+            error: `unknown effort level: ${value}`,
+            plain_language_summary: t.unknownEffort(String(value)),
+          });
+          return;
+        }
+      }
+
       const next: ProviderSettings = { ...settings, ...body, locale: undefined } as ProviderSettings;
       // On vérifie que le nouveau réglage est utilisable AVANT de l'appliquer :
       // basculer sur un fournisseur sans clé ferait échouer le scan suivant
@@ -549,8 +576,8 @@ export function createVulnPipeServer(options: ServerOptions) {
       }
 
       try {
-        buildClient(next.nodeProvider, next.nodeModel);
-        buildClient(next.masterProvider, next.masterModel);
+        buildClient(next.nodeProvider, next.nodeModel, next.nodeEffort);
+        buildClient(next.masterProvider, next.masterModel, next.masterEffort);
       } catch (error) {
         json(res, 400, {
           error: (error as Error).message,
@@ -615,5 +642,16 @@ export function createVulnPipeServer(options: ServerOptions) {
     });
   });
 
-  return { server, runs, emitters, settings, scanSettings, providerAvailability, handler, notesFor, estimates };
+  return {
+    server,
+    runs,
+    emitters,
+    settings,
+    scanSettings,
+    providerAvailability,
+    handler,
+    notesFor,
+    estimates,
+    arbitrationCache,
+  };
 }

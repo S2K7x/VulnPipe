@@ -216,6 +216,20 @@ Cocher au fur et à mesure. Chaque phase correspond à un fichier
         une protection par le scanner déterministe — la route bascule en zone
         grise (coût LLM en plus) au lieu d'être tranchée à coût nul. Le suivi
         de flux de données réel resterait le vrai correctif de fond.
+        **[resserré côté noms de méthode la nuit du 2026-08-19, voir
+        NIGHTLY_LOG.md]** `isDataAccess` comparait le nom d'appel à une liste
+        de noms EXACTS (`findone`, `findbyid`...) : une convention ORM réelle
+        mais absente de la liste (`findOneBy` en TypeORM, `findByIdAndUpdate`
+        en Mongoose...) n'était pas reconnue comme un accès aux données et
+        disparaissait complètement de l'analyse. Si une AUTRE requête de la
+        même méthode était filtrée, le verdict décisif "sain" tombait quand
+        même, à coût nul — la requête non reconnue n'avait jamais été
+        examinée. Remplacé par une correspondance de PRÉFIXE sur le même jeu
+        de verbes : un faux positif ne fait plus que renvoyer une route au LLM
+        au lieu de la trancher gratuitement, jamais l'inverse. Toujours
+        heuristique par construction (un verbe métier qui ne commence par
+        aucun de ces préfixes reste invisible) ; le suivi de flux de données
+        reste le vrai correctif de fond.
       - Un seul type de vuln (IDOR). La structure `prompt`/`scanner`/`node`
         est copiable telle quelle ; seuls la grille et les directives changent.
       - Pas encore de parcours automatique de toutes les routes ni de
@@ -645,3 +659,85 @@ révélé une erreur d'interop sur l'import de `@testing-library/user-event`.
   impossible depuis un navigateur sans dialogue natif).
 - Pas d'authentification : le service est prévu pour un usage local, comme
   posé dans `CLAUDE.md` §6.
+
+---
+
+## Itération UI — présentation, réglages, jeu d'icônes
+
+Trois demandes traitées ensemble, toutes côté interface (aucune règle de
+détection touchée).
+
+### 1. Plus aucun emoji à l'écran
+
+Les emoji (`📥 ✅ 🔴 🟠 📁 💡`…) sont remplacés par un jeu de tracés SVG
+maison : `web/src/components/Icon.tsx`, 33 icônes monochromes en `currentColor`.
+
+Motif : un emoji est dessiné par le système d'exploitation (plat sur Windows,
+bombé sur macOS), il importe ses propres couleurs — ce qui contredit la règle
+n°2 de `styles.css`, « le rouge et l'orange ne servent qu'aux verdicts » — et
+il est annoncé n'importe comment par un lecteur d'écran. Le nom d'icône est
+désormais une valeur typée (`IconName`) portée par le catalogue i18n : une
+icône inexistante ne compile pas.
+
+Par défaut une icône est décorative (`aria-hidden`) ; seule la pastille d'état
+d'une étape, qui porte l'information seule, est annoncée. Les scripts CLI
+(`server.ts`, `e2e-demo.ts`, `bench-idor.ts`) affichent `[ok] / [--]` au lieu
+de `✅ / ❌`.
+
+Test : `landing.test.tsx` rend la timeline, le suivi en direct et la
+présentation dans les deux langues et vérifie qu'aucun caractère des plages
+emoji Unicode n'apparaît — la régression serait attrapée même avec un autre
+symbole que ceux retirés.
+
+### 2. Page de présentation
+
+Nouvel onglet **Présentation**, ouvert par défaut :
+`web/src/components/LandingPage.tsx` + `Diagrams.tsx`.
+
+Neuf sections : promesse, le problème, **schéma d'architecture**, les sept
+étapes, **les trois zones de confiance**, **l'entonnoir de coût**, couverture
+réelle des détecteurs, engagements, FAQ, rappel de l'appel à l'action.
+
+Les trois figures sont dessinées en SVG/HTML, pas exportées en image : elles
+suivent la langue, la palette, et restent lisibles par un lecteur d'écran. Le
+schéma d'architecture isole visuellement l'unique étape payante — c'est la
+question que se pose en premier quelqu'un qui hésite à essayer.
+
+Les sept étapes ne sont **pas** réécrites : elles viennent du même catalogue
+que la timeline affichée pendant un scan (un test le vérifie). Une promesse et
+un compte rendu qui divergent ne sont plus vérifiables. La couverture est
+annoncée telle quelle : 1 détecteur disponible, 3 prévus.
+
+### 3. Page de réglages étoffée
+
+`web/src/components/SettingsPage.tsx`, cinq blocs, chacun étiqueté selon sa
+portée — **appliqué sur le serveur** ou **gardé dans ce navigateur**. Sans
+cette distinction, quelqu'un croit régler son confort de lecture et modifie ce
+que la pipeline facture.
+
+Serveur (nouvelles routes `GET/POST /settings`) :
+- contournement de l'arbitrage pour les findings > 0.7 (option « bypass » de
+  `CLAUDE.md` §3, jusqu'ici seulement présente dans le code de l'agrégateur et
+  inatteignable depuis l'interface) ;
+- seuils de confiance affichés **d'après la réponse du serveur**, jamais
+  recopiés dans l'UI.
+
+Navigateur (`web/src/lib/preferences.ts`) :
+- cible et étendue par défaut, mémorisation de la dernière cible ;
+- seuil d'acceptation automatique d'un devis (0 par défaut = toujours
+  demander ; un devis non chiffrable n'est jamais accepté tout seul) ;
+- détail technique et explications d'étape ouverts d'emblée ;
+- langue, état du service, moteurs disponibles avec la raison d'indisponibilité,
+  remise à zéro des préférences.
+
+Défauts corrigés au passage, invisibles tant que la page ne contenait qu'un
+bloc : `select` et `input[type=number]` étaient laissés au rendu natif (menus
+blancs sur fond charbon), et les libellés du sélecteur de moteur se collaient à
+leur explication faute de styles.
+
+**Attention** : `npm run dev` doit être relancé pour servir `/settings` — le
+proxy Vite a été complété, mais l'API ne connaît la route qu'après redémarrage.
+
+Tests : 283 verts (`npm test`), dont 20 nouveaux sur les icônes, la
+présentation, les préférences et les réglages, et 4 sur les nouvelles routes
+serveur. `npx tsc --noEmit` propre, build de production 293 kB / 91 kB gzip.

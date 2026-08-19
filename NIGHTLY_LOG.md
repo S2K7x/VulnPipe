@@ -2,6 +2,68 @@
 
 ## 2026-08-19
 
+**Sujet** : le scanner IDOR déterministe pouvait encore classer une route
+vulnérable comme "saine" sans jamais consulter le LLM — cette fois à cause
+d'une liste de noms de méthode exacts qui ratait les conventions ORM
+composées.
+
+**Résultat** : PR ouverte (branche `claude/exciting-volta-x4wscq`).
+
+**Ce que j'ai appris** :
+- `isDataAccess()` (`src/nodes/idor/scanner.ts`) comparait le nom de chaque
+  appel à une liste FIGÉE de noms exacts (`findone`, `findbyid`, `getbyid`...).
+  Un nom de méthode réel mais absent de la liste — `findOneBy` (TypeORM),
+  `findByIdAndUpdate` (Mongoose), et toute variante composée du même genre —
+  n'était pas reconnu comme un accès aux données : `collectDataAccessSites`
+  le voyait bien, mais la boucle principale de `scanForIdor` l'ignorait
+  purement et simplement (`if (!isDataAccess(...)) continue;`).
+- Conséquence : si la MÊME méthode contient à la fois un appel reconnu et
+  filtré (ex. `this.db.logs.findOne({ userId })`, pour un log d'accès) et un
+  appel non reconnu et NON filtré (ex. `this.db.orders.findOneBy({ id })`,
+  la vraie lecture de la ressource), le scanner ne voit que le premier. Le
+  garde-fou `scoped && !unscoped && !hasUnresolvedGuard` conclut alors
+  `decisive_score: 0.1` ("sain", coût nul) alors que la route est réellement
+  vulnérable. Exactement la même famille de faux négatif silencieux que le
+  bug corrigé hier soir (voir entrée du 2026-08-18) — cette fois sur le nom
+  de la méthode plutôt que sur la fenêtre de recherche du filtre.
+- Corrigé en remplaçant la comparaison par égalité exacte par une
+  comparaison de PRÉFIXE sur le même jeu de verbes (`find`, `get`, `query`,
+  `select`, `fetch`, `load`, `update`, `delete`, `remove`, `destroy`, `save`).
+  Tous les noms de la fixture (`findById`, `findOne`) commencent déjà par un
+  de ces verbes : aucune régression sur les cas existants, vérifié par les
+  283 tests déjà en place plus le nouveau.
+- Un faux positif introduit par le préfixe (un nom métier qui commence par
+  "get" sans être une requête base) ne peut plus produire un verdict "sain"
+  à tort : au pire il ajoute un site "non reconnu comme filtré" qui pousse la
+  route en zone grise (coût LLM en plus), jamais l'inverse. C'est la
+  direction sûre déjà retenue hier soir.
+
+**À ne pas refaire** :
+- Ne pas revenir à une liste de noms exacts "pour plus de précision" sans
+  rouvrir ce raisonnement : c'est précisément ce qui a permis à `findOneBy`
+  de passer inaperçu.
+- Je n'ai PAS tenté d'énumérer davantage de noms ORM exacts (`findBy`,
+  `updateOne`, `deleteMany`, méthodes d'agrégation...) : une liste, même
+  élargie, reste un jeu au chat et à la souris avec les conventions de nommage
+  réelles. Le préfixe couvre la famille au lieu d'un nom précis, mais reste
+  heuristique par construction — un verbe métier qui ne commence par aucun de
+  ces préfixes (rare mais possible) resterait invisible. Le vrai correctif de
+  fond, déjà noté dans `ROADMAP.md`, est un suivi de flux de données plutôt
+  qu'un filtre sur le nom de la méthode ; hors de portée d'un changement d'une
+  nuit.
+
+**Vérifications exécutées** :
+```
+npm run typecheck   # 0 erreur
+npm test             # 284/284 verts (283 avant + 1 nouveau test, aucun ignoré/affaibli)
+npm run build         # web/dist généré, 293 kB / 91 kB gzip
+```
+Aucun script consommant du quota LLM n'a été lancé (bench/measure/report/e2e) :
+le changement est entièrement couvert par les tests hors-ligne (`FakeLlmClient`)
+et par un test unitaire du scanner qui n'appelle aucun modèle.
+
+## 2026-08-19
+
 **Sujet** : en mode `incremental_scan`, un commit qui ne touchait qu'un service
 ne faisait réanalyser aucune route — VulnPipe répondait « rien à revérifier »
 sur le commit qui venait justement d'introduire la faille.
@@ -52,11 +114,18 @@ sur le commit qui venait justement d'introduire la faille.
 **Vérifications exécutées** :
 ```
 npm run typecheck   # 0 erreur
-npm test            # 264/264 verts (259 avant + 5 nouveaux, aucun ignoré/affaibli)
-npm run build       # web/dist généré, 247 kB / 78 kB gzip
+npm test            # 289/289 verts (284 avant + 5 nouveaux, aucun ignoré/affaibli)
+npm run build       # web/dist généré, 293 kB / 91 kB gzip
 ```
 Aucun script consommant du quota LLM n'a été lancé (bench/measure/report/e2e) :
 la sélection de routes est purement déterministe et se teste hors ligne.
+
+**Note de rebase** : la branche a été rebasée sur `main` après l'arrivée des
+PR #2 (page de présentation, réglages) et #3 (préfixes ORM du scanner). Seul
+`NIGHTLY_LOG.md` était en conflit — deux nuits datées du même jour, les deux
+entrées ont été conservées. Les chiffres ci-dessus sont ceux d'APRÈS rebase ;
+les fichiers de code se sont fusionnés sans conflit (les modifications de
+`pipeline.ts` par la PR #3 portent sur l'agrégation, pas sur `selectRoutes`).
 
 ## 2026-08-18
 

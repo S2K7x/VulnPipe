@@ -256,7 +256,8 @@ code, .vp-mono { font-family: var(--mono); }
 
 .vp-steprail-item:last-child { border-right: none; }
 
-.vp-steprail-icon { font-size: 1.3rem; display: block; margin-bottom: 12px; }
+.vp-steprail-icon { display: block; margin-bottom: 12px; color: var(--muted); }
+.vp-steprail-item.vp-current .vp-steprail-icon { color: var(--accent-fg); }
 
 .vp-steprail-label {
   font-weight: 700;
@@ -325,7 +326,10 @@ label strong { font-size: 0.95rem; }
   margin-top: 4px;
 }
 
-input[type='text'], input:not([type]) {
+/* `select` et `number` étaient laissés au rendu natif : sur un fond charbon,
+   un menu déroulant blanc du système jure et donne l'impression d'un écran
+   inachevé. Ils suivent désormais la même écriture que les champs texte. */
+input[type='text'], input[type='number'], input:not([type]), select {
   width: 100%;
   background: var(--panel);
   border: 1px solid var(--line-strong);
@@ -344,6 +348,21 @@ input:focus-visible, button:focus-visible, [role='tab']:focus-visible {
 
 input::placeholder { color: var(--faint); }
 
+select {
+  appearance: none;
+  cursor: pointer;
+  /* Chevron dessiné en fond : un caractère « ▾ » hériterait de la police du
+     système, comme les emoji qu'on vient de retirer. */
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 20px) 55%, calc(100% - 14px) 55%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 40px;
+}
+
+select option { background: var(--panel); color: var(--fg); }
+
 .vp-field-error {
   color: var(--red);
   font-size: 0.85rem;
@@ -359,6 +378,12 @@ input::placeholder { color: var(--faint); }
 
 .vp-target-tab {
   flex: 1 1 150px;
+  /* L'icône et le libellé sont deux boîtes depuis le passage au SVG : sans
+     `gap`, ils se touchent. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
   padding: 13px 14px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
@@ -871,3 +896,605 @@ th {
   }
   .vp-steprail-item { border-right: none; border-bottom: 1px solid var(--line); }
 }
+
+/* ==========================================================================
+ * ICÔNES
+ *
+ * Un seul jeu de tracés, monochrome, qui prend la couleur du texte qui
+ * l'entoure. C'est ce qui remplace les emoji : la couleur d'une icône est
+ * décidée ici, par le contexte, jamais par la police du système.
+ * ========================================================================== */
+
+.vp-icon {
+  flex-shrink: 0;
+  vertical-align: -0.16em;
+}
+
+/* Les états d'étape sont les seuls endroits où l'icône porte du sens seule :
+   elle a donc droit à une couleur, contrairement au reste du jeu. */
+.vp-status { display: inline-flex; color: var(--faint); }
+.vp-timeline-step.vp-done .vp-status { color: var(--green); }
+.vp-timeline-step.vp-failed .vp-status { color: var(--red); }
+.vp-timeline-step.vp-running .vp-status { color: var(--accent); }
+.vp-timeline-step.vp-skipped .vp-status { color: var(--grey); }
+
+.vp-step-icon { display: inline-flex; color: var(--muted); }
+.vp-timeline-step.vp-current .vp-step-icon { color: var(--accent); }
+
+.vp-live-feed .vp-zone-alert .vp-live-icon { color: var(--red); }
+.vp-live-feed .vp-zone-grey .vp-live-icon { color: var(--orange); }
+.vp-live-feed .vp-zone-safe .vp-live-icon { color: var(--green); }
+.vp-live-feed .vp-zone-failed .vp-live-icon { color: var(--grey); }
+.vp-live-icon { display: inline-flex; }
+
+.vp-explain-analogy { display: flex; gap: 8px; align-items: baseline; }
+.vp-notice { display: flex; gap: 10px; align-items: baseline; }
+
+/* Un bouton qui porte une icône aligne les deux sur la même ligne de base. */
+.vp-primary, .vp-secondary { display: inline-flex; align-items: center; gap: 10px; }
+
+/* ==========================================================================
+ * PAGE DE PRÉSENTATION
+ * ========================================================================== */
+
+.vp-landing-hero { padding-bottom: 34px; }
+
+.vp-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 26px 0 0;
+}
+
+.vp-cta-link { text-decoration: none; }
+
+.vp-stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  list-style: none;
+  padding: 0;
+  margin: 34px 0 0;
+}
+
+.vp-stat-row li { background: var(--hero); padding: 18px 16px; }
+
+.vp-stat-row strong {
+  display: block;
+  font-family: var(--display);
+  font-size: 1.9rem;
+  line-height: 1;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.vp-stat-row span { font-size: 0.78rem; color: var(--muted); }
+
+.vp-section {
+  border-top: 1px solid var(--line);
+  padding: 46px 0 8px;
+}
+
+.vp-section-lede {
+  color: var(--muted);
+  max-width: 74ch;
+  font-size: 0.98rem;
+  margin-bottom: 26px;
+}
+
+.vp-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(258px, 1fr));
+  gap: 14px;
+  margin: 22px 0;
+}
+
+.vp-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 22px 20px;
+}
+
+.vp-card h3 { margin: 12px 0 8px; }
+.vp-card p { color: var(--muted); font-size: 0.9rem; margin: 0; }
+.vp-card > .vp-icon { color: var(--accent); }
+
+.vp-card-num, .vp-card-range {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  color: var(--faint);
+}
+
+/* Les trois tons ne servent qu'aux zones de confiance : même règle que les
+   verdicts, le rouge et l'orange ne décorent jamais. */
+.vp-card.vp-tone-green { border-left: 3px solid var(--green); }
+.vp-card.vp-tone-orange { border-left: 3px solid var(--orange); }
+.vp-card.vp-tone-red { border-left: 3px solid var(--red); }
+.vp-card.vp-tone-green .vp-card-range { color: var(--green); }
+.vp-card.vp-tone-orange .vp-card-range { color: var(--orange); }
+.vp-card.vp-tone-red .vp-card-range { color: var(--red); }
+
+/* --- Schémas -------------------------------------------------------------- */
+
+.vp-schema { margin: 0 0 26px; }
+
+/* Un schéma large défile DANS son cadre : la page, elle, ne défile jamais
+   horizontalement. */
+.vp-schema-scroll { overflow-x: auto; padding-bottom: 6px; }
+
+.vp-schema figcaption {
+  color: var(--faint);
+  font-size: 0.84rem;
+  max-width: 74ch;
+  margin-top: 10px;
+}
+
+.vp-diagram { width: 100%; min-width: 720px; height: auto; color: var(--line-strong); }
+.vp-diagram-zones { min-width: 520px; }
+
+.vp-dgm-node rect {
+  fill: var(--panel);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.vp-dgm-input rect { fill: var(--surface); }
+.vp-dgm-paid rect { stroke: var(--accent); }
+.vp-dgm-output rect { fill: var(--surface-2); }
+
+.vp-dgm-title {
+  fill: var(--fg);
+  font-family: var(--display);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.vp-dgm-note { fill: var(--muted); font-family: var(--sans); font-size: 11px; }
+.vp-dgm-paid .vp-dgm-title { fill: var(--accent); }
+
+.vp-dgm-zone { fill: none; stroke: var(--line); stroke-dasharray: 3 4; }
+.vp-dgm-zone-paid { stroke: var(--accent-dim); }
+
+.vp-dgm-zonelabel {
+  fill: var(--faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.vp-dgm-zonelabel-paid { fill: var(--accent-dim); }
+
+.vp-dgm-arrow { stroke: var(--line-strong); stroke-width: 1.4; color: var(--line-strong); }
+.vp-dgm-edge { font-family: var(--mono); font-size: 10px; fill: var(--faint); }
+.vp-dgm-edge-paid { fill: var(--accent-dim); }
+.vp-dgm-axis { stroke: var(--line); stroke-width: 1; }
+.vp-dgm-range { fill: var(--faint); font-family: var(--mono); font-size: 11px; }
+
+.vp-dgm-zoneband.vp-tone-green rect { fill: var(--green-bg); stroke: var(--green); }
+.vp-dgm-zoneband.vp-tone-orange rect { fill: var(--orange-bg); stroke: var(--orange); }
+.vp-dgm-zoneband.vp-tone-red rect { fill: var(--red-bg); stroke: var(--red); }
+.vp-dgm-zoneband rect { stroke-width: 1; }
+
+/* --- Entonnoir de coût ---------------------------------------------------- */
+
+.vp-funnel { list-style: none; padding: 0; margin: 0 0 26px; }
+
+.vp-funnel li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-bottom: none;
+  overflow: hidden;
+}
+
+.vp-funnel li:last-child { border-bottom: 1px solid var(--line); }
+
+.vp-funnel-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--surface);
+  border-right: 2px solid var(--line-strong);
+}
+
+.vp-funnel-last .vp-funnel-bar { background: rgba(195, 245, 60, 0.14); border-right-color: var(--accent); }
+
+.vp-funnel-text { position: relative; flex: 1; }
+.vp-funnel-text strong { display: block; font-size: 0.92rem; }
+.vp-funnel-text span { color: var(--faint); font-size: 0.8rem; }
+
+.vp-funnel-share {
+  position: relative;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.vp-funnel-last .vp-funnel-share { color: var(--accent); }
+
+/* --- Tableau de couverture ------------------------------------------------ */
+
+.vp-table-scroll { overflow-x: auto; }
+.vp-table { min-width: 560px; }
+.vp-table tbody th { font-family: var(--display); text-transform: uppercase; color: var(--fg); font-size: 0.8rem; }
+.vp-table td { color: var(--muted); vertical-align: top; }
+
+.vp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.vp-pill-live { border-color: var(--accent); color: var(--accent); }
+
+/* --- FAQ ------------------------------------------------------------------ */
+
+.vp-faq { border-top: 1px solid var(--line); }
+
+.vp-faq details { border-bottom: 1px solid var(--line); }
+
+.vp-faq summary {
+  cursor: pointer;
+  padding: 16px 0;
+  font-family: var(--display);
+  text-transform: uppercase;
+  font-size: 0.92rem;
+  letter-spacing: 0.01em;
+  list-style: none;
+}
+
+.vp-faq summary::-webkit-details-marker { display: none; }
+.vp-faq summary::after { content: '+'; float: right; color: var(--accent); font-family: var(--mono); }
+.vp-faq details[open] summary::after { content: '–'; }
+.vp-faq p { color: var(--muted); font-size: 0.92rem; max-width: 78ch; padding-bottom: 16px; margin: 0; }
+
+/* --- Reprise de l'appel à l'action ---------------------------------------- */
+
+.vp-final-cta {
+  margin-top: 46px;
+  padding: 40px 32px;
+  background: var(--hero);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.vp-final-cta p { color: var(--muted); max-width: 60ch; margin: 0 auto 22px; }
+
+/* ==========================================================================
+ * RÉGLAGES
+ * ========================================================================== */
+
+.vp-settings-head { margin-bottom: 22px; }
+
+.vp-settings-block {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 26px 24px;
+  margin-bottom: 16px;
+}
+
+/* Le bloc « moteurs » réutilise tel quel le composant existant, qui porte
+   déjà son propre cadre : on le neutralise pour éviter la boîte dans la boîte. */
+.vp-settings-block .vp-providers {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.vp-settings-block h3 { margin-bottom: 6px; }
+
+.vp-settings-subhead {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin: 26px 0 6px;
+  font-weight: 400;
+}
+
+/* Portée d'un réglage : serveur (engage l'analyse) ou navigateur (mon écran). */
+.vp-scope {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.vp-scope-server { color: var(--accent-dim); }
+
+.vp-setting { margin: 18px 0; }
+.vp-setting select, .vp-setting input[type='number'] { margin-top: 8px; }
+.vp-setting-text strong { display: block; }
+
+.vp-switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.vp-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+
+.vp-switch-track {
+  flex-shrink: 0;
+  width: 38px;
+  height: 21px;
+  margin-top: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--panel);
+  display: block;
+  position: relative;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.vp-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+
+.vp-switch input:checked + .vp-switch-track { background: var(--accent); border-color: var(--accent); }
+.vp-switch input:checked + .vp-switch-track .vp-switch-knob { transform: translateX(17px); background: var(--accent-fg); }
+.vp-switch input:focus-visible + .vp-switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vp-switch input:disabled + .vp-switch-track { opacity: 0.45; }
+
+.vp-inline-field { display: flex; align-items: center; gap: 8px; }
+.vp-inline-field input { width: 120px; }
+.vp-unit { font-family: var(--mono); color: var(--muted); }
+.vp-field-note { color: var(--accent); }
+
+.vp-remembered {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.vp-remembered code { color: var(--fg); }
+
+.vp-threshold-list, .vp-key-list { list-style: none; padding: 0; margin: 10px 0 0; }
+
+.vp-threshold-list li, .vp-key-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-bottom: none;
+  font-size: 0.86rem;
+}
+
+.vp-threshold-list li:last-child, .vp-key-list li:last-child { border-bottom: 1px solid var(--line); }
+.vp-threshold-list code { font-size: 0.8rem; min-width: 92px; color: var(--muted); }
+.vp-threshold-list .vp-tone-green code { color: var(--green); }
+.vp-threshold-list .vp-tone-orange code { color: var(--orange); }
+.vp-threshold-list .vp-tone-red code { color: var(--red); }
+
+.vp-key-list li { color: var(--faint); }
+.vp-key-list strong { min-width: 190px; color: var(--muted); }
+.vp-key-list .vp-icon { color: var(--faint); }
+.vp-key-list li.vp-key-ready { color: var(--muted); }
+.vp-key-list li.vp-key-ready strong { color: var(--fg); }
+.vp-key-list li.vp-key-ready .vp-icon { color: var(--accent); }
+
+.vp-health {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.vp-health-online .vp-icon { color: var(--green); }
+.vp-health-offline { color: var(--red); }
+.vp-health-offline .vp-icon { color: var(--red); }
+
+.vp-lang-wide { margin-top: 10px; }
+.vp-lang-wide button { padding: 6px 14px; }
+
+.vp-provider-warning { display: flex; gap: 8px; align-items: baseline; }
+
+@media (max-width: 640px) {
+  .vp-scope { position: static; display: flex; margin-bottom: 12px; }
+  .vp-settings-block { padding: 20px; }
+  .vp-final-cta { padding: 30px 20px; }
+  .vp-key-list strong { min-width: 0; }
+  .vp-key-list li, .vp-threshold-list li { flex-wrap: wrap; }
+}
+
+/* --- Bloc « moteur d'IA » --------------------------------------------------
+ *
+ * Il n'avait jamais eu de styles propres : les libellés se collaient à leur
+ * explication (« Recherche de faillesTourne sur chaque adresse »). Le défaut
+ * ne se voyait pas tant que la page ne contenait que ce bloc.
+ * -------------------------------------------------------------------------- */
+
+.vp-provider-block {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin: 18px 0;
+  background: var(--panel);
+}
+
+.vp-provider-block > label { display: block; margin-bottom: 10px; }
+.vp-provider-block > label strong { display: block; font-size: 0.98rem; }
+
+.vp-provider-desc, .vp-provider-hint {
+  display: block;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  margin-top: 4px;
+}
+
+.vp-provider-hint { color: var(--faint); margin: 8px 0 0; }
+
+.vp-provider-model-label {
+  display: block;
+  margin: 16px 0 6px;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.vp-provider-block input { margin-bottom: 0; }
+
+.vp-provider-warning {
+  color: var(--orange);
+  font-size: 0.86rem;
+  margin: 10px 0 0;
+}
+
+.vp-providers > button {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 13px 22px;
+  cursor: pointer;
+}
+
+.vp-providers > button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* --- Explication de la pipeline ------------------------------------------
+ *
+ * La liste n'avait jamais de styles propres : le numéro, l'icône et le titre
+ * se touchaient, et le marqueur natif du `ol` doublait le numéro affiché.
+ * -------------------------------------------------------------------------- */
+
+.vp-pipeline-intro { color: var(--muted); max-width: 74ch; }
+
+.vp-pipeline-steps {
+  list-style: none;
+  padding: 0;
+  margin: 22px 0 0;
+  counter-reset: vp-pipeline;
+}
+
+.vp-pipeline-step {
+  border-top: 1px solid var(--line);
+  padding: 18px 0;
+}
+
+.vp-pipeline-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.vp-pipeline-head strong {
+  font-family: var(--display);
+  text-transform: uppercase;
+  font-size: 0.94rem;
+  letter-spacing: 0.01em;
+}
+
+.vp-pipeline-number, .vp-landing-step-num {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  color: var(--faint);
+}
+
+.vp-pipeline-step.vp-current .vp-pipeline-number {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.vp-pipeline-now {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.vp-pipeline-cost {
+  margin-top: 26px;
+  border-left: 3px solid var(--accent);
+  background: var(--panel);
+  padding: 18px 20px;
+}
+
+.vp-pipeline-cost h3 { margin-bottom: 8px; }
+.vp-pipeline-cost p { color: var(--muted); font-size: 0.9rem; margin: 0; }
+
+/* --- Les sept étapes, version présentation -------------------------------- */
+
+.vp-landing-steps { list-style: none; padding: 0; margin: 0; }
+
+.vp-landing-steps > li {
+  border-top: 1px solid var(--line);
+  padding: 20px 0;
+}
+
+.vp-landing-steps > li:last-child { border-bottom: 1px solid var(--line); }
+
+.vp-landing-step-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.vp-landing-step-head strong {
+  font-family: var(--display);
+  text-transform: uppercase;
+  font-size: 1rem;
+}
+
+.vp-landing-steps .vp-explain-why { color: var(--muted); font-size: 0.92rem; max-width: 82ch; }
+.vp-landing-steps .vp-explain-analogy { color: var(--faint); font-style: italic; font-size: 0.86rem; margin: 0; }

@@ -63,7 +63,7 @@ console.log(`Moteur : ${provider} / ${model}\n`);
 const providers = await (await fetch(`http://localhost:${PORT}/providers`)).json();
 console.log('Fournisseurs détectés :');
 for (const entry of providers.available as Array<{ id: string; available: boolean; why: string | null }>) {
-  console.log(`  ${entry.available ? '✅' : '❌'} ${entry.id}${entry.why ? ` — ${entry.why}` : ''}`);
+  console.log(`  ${entry.available ? '[ok]  ' : '[--]  '}${entry.id}${entry.why ? ` — ${entry.why}` : ''}`);
 }
 
 // --- 2. Webhook -------------------------------------------------------------
@@ -102,7 +102,7 @@ while (!ended) {
     if (!line) continue;
     const event = JSON.parse(line.slice(6));
     const translation = STEP_TRANSLATIONS[event.step as keyof typeof STEP_TRANSLATIONS];
-    const symbol = { running: '⏳', done: '✅', failed: '⚠️', skipped: '⏭️' }[event.status as string] ?? '·';
+    const symbol = { running: '...', done: '[ok]', failed: '[!]', skipped: '[-]' }[event.status as string] ?? '·';
     console.log(`  ${symbol} ${translation?.icon ?? ''} ${event.plain_language}`);
   }
 }
@@ -160,7 +160,7 @@ function renderDemoPage(run: Record<string, never>): string {
     .map((event) => {
       const e = event as never as { step: string; status: string; plain_language: string };
       const translation = STEP_TRANSLATIONS[e.step as keyof typeof STEP_TRANSLATIONS];
-      const symbol = { running: '⏳', done: '✅', failed: '⚠️', skipped: '⏭️' }[e.status] ?? '·';
+      const symbol = { running: '...', done: '[ok]', failed: '[!]', skipped: '[-]' }[e.status] ?? '·';
       return `<li class="${e.status}"><span>${symbol}</span> ${translation?.icon ?? ''} <strong>${escape(translation?.label ?? e.step)}</strong><p>${escape(e.plain_language)}</p></li>`;
     })
     .join('\n');

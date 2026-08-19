@@ -98,7 +98,7 @@ for (const testCase of CASES) {
   totalThinking += llmInfo?.thinking_tokens ?? 0;
   totalCalls += llmInfo?.calls ?? 0;
 
-  console.log(`${ok ? '✅' : '❌'} ${testCase.label}`);
+  console.log(`${ok ? '[PASS]' : '[FAIL]'} ${testCase.label}`);
   console.log(`   attendu  : ${testCase.expectation}`);
   console.log(`   obtenu   : score=${verdict.confidence_score} reason=${verdict.reason ?? 'null'}`);
   console.log(

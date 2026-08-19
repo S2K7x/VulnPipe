@@ -12,6 +12,8 @@ import { useState } from 'react';
 
 import { explainTerm, severityLabel } from '../lib/step_translations.ts';
 import { useI18n } from '../i18n/context.tsx';
+import { usePreferences } from '../lib/preferences.ts';
+import { Icon } from './Icon.tsx';
 
 export interface ReportFinding {
   severity: string;
@@ -86,15 +88,19 @@ function VerdictNotice({ finding }: { finding: ReportFinding }) {
 
   return (
     <p className="vp-notice" role="note">
-      ⚠️ {message}
+      <Icon name="warning" size={16} />
+      {message}
     </p>
   );
 }
 
 export function FindingCard({ finding }: { finding: ReportFinding }) {
   const { locale, t } = useI18n();
-  // Replié par défaut : exigence explicite de la spec.
-  const [showTechnical, setShowTechnical] = useState(false);
+  const { preferences } = usePreferences();
+  // Replié par défaut : exigence explicite de la spec. La préférence peut
+  // l'ouvrir d'emblée — c'est un choix que l'utilisateur pose lui-même dans
+  // les réglages, pas un défaut qu'on lui impose.
+  const [showTechnical, setShowTechnical] = useState(preferences.technicalByDefault);
 
   return (
     <article className={`vp-finding vp-level-${finding.report_level}`}>

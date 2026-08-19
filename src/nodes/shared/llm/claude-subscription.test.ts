@@ -19,8 +19,9 @@ import {
   extractJson,
   schemaInstruction,
   type AgentSdkMessage,
+  type AgentSdkQuery,
 } from './claude-subscription.ts';
-import { claudeCodeInstalled, describeProviders, createLlmClient } from './factory.ts';
+import { claudeCodeInstalled, describeProviders, createLlmClient, parseEffort } from './factory.ts';
 import { LlmError, type JsonSchema } from './types.ts';
 
 const SCHEMA: JsonSchema = {
@@ -60,7 +61,10 @@ function fakeQuery(over: { apiKeySource?: string; result?: string; isError?: boo
       },
     },
   ];
-  return vi.fn(async function* () {
+  // Le faux prend explicitement les arguments du vrai `query` : sans ça,
+  // `mock.calls[0]` est typé comme un tuple vide et les assertions sur les
+  // options passées au SDK ne compilent pas.
+  return vi.fn(async function* (_args: Parameters<AgentSdkQuery>[0]) {
     for (const m of messages) yield m;
   });
 }
@@ -179,7 +183,7 @@ describe('Robustesse', () => {
   it('signale une absence de résultat au lieu de rendre un verdict vide', async () => {
     // Un flux qui se termine sans `result` est une panne, pas un « rien à
     // signaler ».
-    const empty = vi.fn(async function* () {
+    const empty = vi.fn(async function* (_args: Parameters<AgentSdkQuery>[0]) {
       yield { type: 'system', subtype: 'init', apiKeySource: 'none' } as AgentSdkMessage;
     });
     const client = new ClaudeSubscriptionClient({ query: empty as never });
@@ -192,6 +196,48 @@ describe('Robustesse', () => {
     expect(instruction).toContain('verdict');
     expect(instruction).toContain('confidence_score');
     expect(instruction).toContain('JSON');
+  });
+});
+
+// ===========================================================================
+// Profondeur de réflexion
+// ===========================================================================
+
+describe('Niveau d effort', () => {
+  it("transmet le niveau choisi au SDK", async () => {
+    const query = fakeQuery();
+    const client = new ClaudeSubscriptionClient({ query: query as never, effort: 'low' });
+    await client.complete(REQUEST);
+
+    expect(query.mock.calls[0]![0].options.effort).toBe('low');
+  });
+
+  it("ne force RIEN quand l utilisateur n a pas choisi", async () => {
+    // Le défaut du modèle vaut mieux qu'une valeur qu'on aurait inventée à sa
+    // place : on n'envoie pas la clé du tout.
+    const query = fakeQuery();
+    const client = new ClaudeSubscriptionClient({ query: query as never });
+    await client.complete(REQUEST);
+
+    expect(query.mock.calls[0]![0].options).not.toHaveProperty('effort');
+  });
+
+  it('accepte les cinq niveaux et rejette le reste', () => {
+    for (const level of ['low', 'medium', 'high', 'xhigh', 'max']) {
+      expect(parseEffort(level)).toBe(level);
+    }
+    expect(parseEffort('HIGH')).toBe('high'); // tolérant à la casse
+    expect(parseEffort('turbo')).toBeUndefined();
+    expect(parseEffort(undefined)).toBeUndefined();
+    expect(parseEffort('')).toBeUndefined();
+  });
+
+  it('se construit depuis la variable d environnement', () => {
+    const client = createLlmClient({
+      VULNPIPE_LLM_PROVIDER: 'claude-subscription',
+      VULNPIPE_LLM_EFFORT: 'max',
+    });
+    expect(client.provider).toBe('claude-subscription');
   });
 });
 

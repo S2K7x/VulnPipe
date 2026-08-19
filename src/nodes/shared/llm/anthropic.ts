@@ -25,7 +25,14 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 
-import { LlmError, parseJsonOutput, type LlmClient, type LlmRequest, type LlmResponse } from './types.ts';
+import {
+  LlmError,
+  parseJsonOutput,
+  type EffortLevel,
+  type LlmClient,
+  type LlmRequest,
+  type LlmResponse,
+} from './types.ts';
 
 /** Modèle par défaut : le plus capable, cf. rôle d'arbitre en Phase 5. */
 export const DEFAULT_ANTHROPIC_MODEL = 'claude-opus-5';
@@ -34,6 +41,8 @@ export interface AnthropicOptions {
   apiKey?: string;
   model?: string;
   maxTokens?: number;
+  /** Profondeur de raisonnement. Absent = défaut du modèle (`high`). */
+  effort?: EffortLevel;
 }
 
 export class AnthropicClient implements LlmClient {
@@ -42,12 +51,14 @@ export class AnthropicClient implements LlmClient {
 
   private readonly client: Anthropic;
   private readonly maxTokens: number;
+  private readonly effort?: EffortLevel;
 
   constructor(options: AnthropicOptions = {}) {
     // Le SDK résout aussi ANTHROPIC_API_KEY / profil `ant auth login` seul.
     this.client = options.apiKey ? new Anthropic({ apiKey: options.apiKey }) : new Anthropic();
     this.model = options.model ?? DEFAULT_ANTHROPIC_MODEL;
     this.maxTokens = options.maxTokens ?? 8_000;
+    this.effort = options.effort;
   }
 
   async complete<T>(request: LlmRequest): Promise<LlmResponse<T>> {
@@ -65,6 +76,9 @@ export class AnthropicClient implements LlmClient {
             type: 'json_schema',
             schema: { ...request.schema, additionalProperties: false },
           },
+          // Omis quand l'utilisateur n'a rien choisi : le défaut du modèle
+          // (`high`) vaut mieux qu'une valeur qu'on aurait inventée.
+          ...(this.effort ? { effort: this.effort } : {}),
         },
         // `temperature` volontairement ABSENT : 400 sur les modèles récents.
       } as Anthropic.MessageCreateParamsNonStreaming);

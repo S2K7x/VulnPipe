@@ -426,6 +426,25 @@ describe('Webhook', () => {
   // réellement, sinon l'écran explique une pipeline qui n'existe pas.
   // -------------------------------------------------------------------------
 
+  it("REFUSE un niveau d effort inconnu au lieu de l ignorer", async () => {
+    // Ici la personne l'a posé explicitement : l'avaler en silence lui ferait
+    // croire à un réglage appliqué qui ne l'est pas.
+    const server = makeServer();
+    const response = await call(server, 'POST', '/providers', { masterEffort: 'turbo' });
+
+    expect(response.status).toBe(400);
+    expect(response.json.plain_language_summary).toMatch(/low, medium, high/);
+    expect(server.settings.masterEffort).toBeUndefined();
+  });
+
+  it('accepte et conserve un niveau d effort valide', async () => {
+    const server = makeServer();
+    const response = await call(server, 'POST', '/providers', { masterEffort: 'low' });
+
+    expect(response.status).toBe(200);
+    expect(server.settings.masterEffort).toBe('low');
+  });
+
   it('expose les réglages d analyse et les seuils réellement appliqués', async () => {
     const server = makeServer();
     const response = await call(server, 'GET', '/settings');

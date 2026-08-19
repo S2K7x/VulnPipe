@@ -774,3 +774,52 @@ son nom promet.
 - Le surcoût de ~26 000 jetons par appel n'est pas réductible depuis l'API
   publique du SDK. À re-mesurer si une option de harnais minimal apparaît.
 - Non testé sur un scan complet réel : seuls des sondages unitaires ont tourné.
+
+
+---
+
+## Choix du moteur, du modèle et de la profondeur — livré le 2026-08-19
+
+### Trois choix explicites, par rôle (détection / arbitrage)
+
+1. **API Claude ou abonnement** — deux fournisseurs distincts et nommés :
+   `anthropic` (clé API, facturé à l'appel) et `claude-subscription` (ton
+   abonnement Pro/Max via Claude Code). Le second n'a besoin d'aucune clé.
+2. **Le modèle** — champ libre avec suggestions, ordonnées **du moins gourmand
+   en jetons au plus capable**. L'ordre porte l'information.
+3. **La profondeur de réflexion** (`effort`) — `low` → `max`, ou « défaut du
+   modèle » pour ne rien forcer. Vérifié comme supporté des deux côtés :
+   `output_config.effort` sur l'API, `options.effort` sur le SDK (types du SDK
+   0.3.235 lus, pas supposés).
+
+Un niveau inconnu envoyé à `POST /providers` est **refusé** (400) et non ignoré :
+posé explicitement par la personne, l'avaler en silence lui ferait croire à un
+réglage appliqué. Un niveau inconnu dans `.env` retombe en revanche sur le
+défaut du modèle sans faire échouer le scan — une faute de frappe dans un
+réglage de confort ne doit pas coûter une analyse.
+
+### Vocabulaire : où vont les jetons, pas « gratuit vs payant »
+
+Le vocabulaire « modèle gratuit / modèle payant » a été retiré de toute
+l'interface et des messages serveur. Il décrivait l'effet sur la carte
+bancaire, pas la mécanique — et il devenait carrément faux sur un abonnement,
+où rien n'est débité à l'appel alors que des jetons sont bien consommés.
+
+Le vocabulaire retenu distingue trois choses différentes que « gratuit »
+confondait :
+
+| Avant | Maintenant | Ce que ça dit vraiment |
+|---|---|---|
+| « réglé gratuitement » | « tranché sans IA » | zéro jeton, aucun modèle appelé |
+| « modèle gratuit » | « modèle peu coûteux / léger » | des jetons, mais peu |
+| « modèle payant » | « modèle le plus capable » | là où part l'essentiel des jetons |
+
+### Limites restantes
+- Le palier de puissance d'un modèle est porté par l'ORDRE de la liste de
+  suggestions, pas par une étiquette par modèle. Une liste tenue à la main
+  vieillit ; un jour il faudra la tirer de l'API des modèles.
+- L'effort n'est pas ajusté automatiquement selon le rôle. On pourrait
+  proposer un défaut plus bas pour la détection (beaucoup d'appels) que pour
+  l'arbitrage (un seul) — non fait, ce serait un choix à la place de la personne.
+- `max_tokens` n'est pas exposé : un effort élevé sans marge de sortie peut
+  tronquer. À surveiller si quelqu'un remonte une réponse coupée.

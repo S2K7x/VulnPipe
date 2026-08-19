@@ -22,7 +22,7 @@ import { ClaudeSubscriptionClient, DEFAULT_SUBSCRIPTION_MODEL } from './claude-s
 import { DEFAULT_GEMINI_MODEL, GeminiClient } from './gemini.ts';
 import { OllamaClient } from './ollama.ts';
 import { OpenAiCompatibleClient } from './openai-compatible.ts';
-import { LlmError, type LlmClient } from './types.ts';
+import { EFFORT_LEVELS, LlmError, type EffortLevel, type LlmClient } from './types.ts';
 
 export type ProviderName =
   | 'gemini'
@@ -64,6 +64,8 @@ export interface FactoryEnv {
   VULNPIPE_LLM_PROVIDER?: string;
   VULNPIPE_LLM_MODEL?: string;
   VULNPIPE_LLM_BASE_URL?: string;
+  /** Profondeur de raisonnement : low | medium | high | xhigh | max. */
+  VULNPIPE_LLM_EFFORT?: string;
   GEMINI_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
   OPENAI_API_KEY?: string;
@@ -83,6 +85,19 @@ export interface FactoryEnv {
  */
 export const DEFAULT_PROVIDER: ProviderName = 'gemini';
 
+/**
+ * Lit un niveau d'effort, en refusant silencieusement ce qui n'en est pas un.
+ *
+ * Une valeur inconnue vaut « pas de choix » plutôt qu'une erreur : le défaut du
+ * modèle est un repli sûr, et faire échouer un scan entier pour une faute de
+ * frappe dans un réglage de confort serait disproportionné.
+ */
+export function parseEffort(value: string | undefined): EffortLevel | undefined {
+  if (!value) return undefined;
+  const normalized = value.toLowerCase().trim() as EffortLevel;
+  return EFFORT_LEVELS.includes(normalized) ? normalized : undefined;
+}
+
 export function createLlmClient(env: FactoryEnv = process.env as FactoryEnv): LlmClient {
   const requested = (env.VULNPIPE_LLM_PROVIDER ?? DEFAULT_PROVIDER).toLowerCase();
 
@@ -96,6 +111,7 @@ export function createLlmClient(env: FactoryEnv = process.env as FactoryEnv): Ll
   }
 
   const model = env.VULNPIPE_LLM_MODEL;
+  const effort = parseEffort(env.VULNPIPE_LLM_EFFORT);
 
   switch (requested as ProviderName) {
     case 'gemini':
@@ -114,6 +130,7 @@ export function createLlmClient(env: FactoryEnv = process.env as FactoryEnv): Ll
       return new AnthropicClient({
         apiKey: env.ANTHROPIC_API_KEY,
         model: model ?? DEFAULT_ANTHROPIC_MODEL,
+        effort,
       });
 
     // Abonnement Claude Pro/Max via Claude Code — aucune clé API à fournir :
@@ -121,6 +138,7 @@ export function createLlmClient(env: FactoryEnv = process.env as FactoryEnv): Ll
     case 'claude-subscription':
       return new ClaudeSubscriptionClient({
         model: model ?? DEFAULT_SUBSCRIPTION_MODEL,
+        effort,
         onWarning: (text) => console.warn(`[VulnPipe] ${text}`),
       });
 

@@ -1627,3 +1627,79 @@ th {
 }
 
 .vp-report-export-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+
+/* ---------------------------------------------------------------------------
+   Statut d'une faille.
+
+   Une faille écartée est ESTOMPÉE, jamais retirée : elle reste lisible et
+   reprenable. La masquer reviendrait à offrir un moyen de faire disparaître un
+   problème de l'écran sans l'avoir traité.
+--------------------------------------------------------------------------- */
+
+.vp-finding-aside { opacity: 0.62; }
+.vp-finding-aside:hover, .vp-finding-aside:focus-within { opacity: 1; }
+
+.vp-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.9rem;
+  padding-top: 0.8rem;
+  border-top: 1px dashed var(--line);
+  font-size: 0.88rem;
+}
+
+.vp-status-current { color: var(--muted); }
+.vp-status-current strong { color: var(--fg); }
+.vp-status-choices { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+.vp-status-choice {
+  padding: 0.28rem 0.6rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.vp-status-choice:hover { border-color: var(--accent); color: var(--accent); }
+.vp-status-choice:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.vp-status-note {
+  flex-basis: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.vp-status-form { flex-basis: 100%; display: flex; flex-direction: column; gap: 0.4rem; }
+
+.vp-status-textarea {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+}
+
+.vp-status-textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.vp-status-form-actions { display: flex; gap: 0.6rem; align-items: center; }
+.vp-status-stale { margin: 0.7rem 0 0; }
+
+.vp-status-summary {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+}
+
+.vp-status-rate { margin: 0.2rem 0 0.4rem; font-size: 1.05rem; color: var(--fg); }

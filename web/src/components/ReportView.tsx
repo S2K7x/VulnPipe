@@ -15,6 +15,8 @@ import { useI18n } from '../i18n/context.tsx';
 import { usePreferences } from '../lib/preferences.ts';
 import { buildFixPrompt } from '../lib/fix-prompt.ts';
 import { reportFileName, reportToMarkdown, type ReportMeta } from '../lib/report-markdown.ts';
+import { FindingStatusControl, StaleStatusNotice, useStatuses } from './FindingStatus.tsx';
+import { findingKey, statusStats } from '../lib/finding-status.ts';
 import { Icon } from './Icon.tsx';
 
 export interface ReportFinding {
@@ -240,9 +242,16 @@ export function FindingCard({
   // l'ouvrir d'emblée — c'est un choix que l'utilisateur pose lui-même dans
   // les réglages, pas un défaut qu'on lui impose.
   const [showTechnical, setShowTechnical] = useState(preferences.technicalByDefault);
+  const statuses = useStatuses();
+  const entry = statuses[findingKey(finding)];
+  // Écartée = estompée, jamais retirée. Cacher un point qu'on a soi-même mis
+  // de côté finirait par le faire oublier.
+  const setAside = entry?.status === 'accepted' || entry?.status === 'false_positive';
 
   return (
-    <article className={`vp-finding vp-level-${finding.report_level}`}>
+    <article
+      className={`vp-finding vp-level-${finding.report_level}${setAside ? ' vp-finding-aside' : ''}`}
+    >
       <header className="vp-finding-head">
         <SeverityBadge severity={finding.severity} />
         <span className="vp-finding-route">
@@ -259,6 +268,7 @@ export function FindingCard({
       </div>
 
       <VerdictNotice finding={finding} />
+      <StaleStatusNotice finding={finding} />
 
       {/* Rendre la faille actionnable : voir le code, le donner à un assistant,
           ou aller le corriger. Avant, on affichait « ligne 3 » et rien d'autre. */}
@@ -268,6 +278,8 @@ export function FindingCard({
         <CopyFixPromptButton finding={finding} />
         <OpenInEditorLink finding={finding} sourceRoot={sourceRoot} />
       </div>
+
+      <FindingStatusControl finding={finding} />
 
       <button
         type="button"
@@ -373,6 +385,39 @@ export function ReportExport({ report, meta }: { report: SecurityReport; meta: R
   );
 }
 
+/**
+ * Où en est la personne : ce qui reste, ce qui est corrigé, ce qu'elle a écarté.
+ *
+ * Le taux affiché EXCLUT les points écartés, des deux côtés de la fraction.
+ * C'est la règle posée dans le ROADMAP avant d'écrire ce code : un outil dont
+ * le score monte quand on écarte des alertes apprend à écarter des alertes.
+ */
+export function StatusSummary({ findings }: { findings: ReportFinding[] }) {
+  const { t } = useI18n();
+  const store = useStatuses();
+  const stats = statusStats(findings, store);
+  const dismissed = stats.accepted + stats.falsePositive;
+
+  if (findings.length === 0) return null;
+
+  return (
+    <div className="vp-status-summary">
+      <span className="vp-kicker">{t.status.summaryHeading}</span>
+      <p className="vp-status-rate">
+        {stats.fixRate === null
+          ? t.status.nothingToTreat
+          : t.status.fixRate(Math.round(stats.fixRate * 100))}
+      </p>
+      {dismissed > 0 && (
+        <>
+          <p className="vp-field-help">{t.status.dismissedCount(dismissed)}</p>
+          <p className="vp-field-help">{t.status.excludedNote}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function ReportView({
   report,
   target = null,
@@ -399,6 +444,7 @@ export function ReportView({
             </li>
           )}
         </ul>
+        <StatusSummary findings={report.findings} />
         <ReportExport report={report} meta={{ targetLabel: target?.label ?? null }} />
       </header>
 

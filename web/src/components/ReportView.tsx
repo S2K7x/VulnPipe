@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { explainTerm, severityLabel } from '../lib/step_translations.ts';
 import { useI18n } from '../i18n/context.tsx';
 import { usePreferences } from '../lib/preferences.ts';
+import { buildFixPrompt } from '../lib/fix-prompt.ts';
 import { Icon } from './Icon.tsx';
 
 export interface ReportFinding {
@@ -32,6 +33,14 @@ export interface ReportFinding {
   evidence: 'code' | 'summary_only' | 'not_arbitrated';
   local_confidence_score: number;
   detected_by: string[];
+  code_excerpt: CodeExcerpt | null;
+}
+
+export interface CodeExcerpt {
+  start_line: number;
+  lines: string[];
+  highlight_line: number;
+  truncated: boolean;
 }
 
 export interface SecurityReport {
@@ -45,6 +54,12 @@ export interface SecurityReport {
   };
   findings: ReportFinding[];
   dismissed: Array<{ vulnerability: string; route: string; http_method: string }>;
+  /**
+   * Racine absolue du code analysé, ou `null` quand elle n'existe plus après le
+   * scan (dépôt GitHub cloné puis supprimé). Sans elle, pas de lien vers
+   * l'éditeur : mieux vaut aucun lien qu'un lien mort.
+   */
+  source_root: string | null;
 }
 
 /** Nom technique + sa traduction, jamais l'un sans l'autre. */
@@ -94,7 +109,130 @@ function VerdictNotice({ finding }: { finding: ReportFinding }) {
   );
 }
 
-export function FindingCard({ finding }: { finding: ReportFinding }) {
+/**
+ * Le code en cause, ligne fautive surlignée.
+ *
+ * Le contenu vient du dépôt analysé : donnée non fiable. Il est rendu comme du
+ * TEXTE (React échappe), jamais interprété — pas de `dangerouslySetInnerHTML`
+ * ici, sous aucun prétexte.
+ */
+export function CodeExcerptBlock({ excerpt }: { excerpt: CodeExcerpt | null }) {
+  const { t } = useI18n();
+  if (!excerpt) return <p className="vp-code-missing">{t.report.codeUnavailable}</p>;
+
+  return (
+    <figure className="vp-code">
+      <figcaption className="vp-code-caption">{t.report.codeHeading}</figcaption>
+      <pre className="vp-code-pre">
+        <code>
+          {excerpt.lines.map((line, offset) => {
+            const number = excerpt.start_line + offset;
+            const faulty = number === excerpt.highlight_line;
+            return (
+              <span
+                key={number}
+                className={faulty ? 'vp-code-line vp-code-line-faulty' : 'vp-code-line'}
+                data-testid={faulty ? 'code-line-faulty' : 'code-line'}
+              >
+                <span className="vp-code-number" aria-hidden="true">
+                  {number}
+                </span>
+                <span className="vp-code-text">{line}</span>
+              </span>
+            );
+          })}
+        </code>
+      </pre>
+      {excerpt.truncated && <p className="vp-code-note">{t.report.codeTruncated}</p>}
+    </figure>
+  );
+}
+
+/**
+ * Bouton « copier une demande de correction ».
+ *
+ * L'échec de copie est AFFICHÉ. Un bouton qui ne fait rien et n'explique rien
+ * est le mode de défaillance le plus frustrant qui soit — et l'API
+ * presse-papier échoue pour de vrai (page non sécurisée, permission refusée).
+ */
+export function CopyFixPromptButton({ finding }: { finding: ReportFinding }) {
+  const { locale, t } = useI18n();
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
+
+  const copy = async (): Promise<void> => {
+    const text = buildFixPrompt(finding, locale);
+    try {
+      await navigator.clipboard.writeText(text);
+      setState('copied');
+      window.setTimeout(() => setState('idle'), 2500);
+    } catch {
+      setState('failed');
+    }
+  };
+
+  return (
+    <div className="vp-fix-prompt">
+      <button type="button" className="vp-action" onClick={copy} title={t.report.copyFixPromptHelp}>
+        <Icon name="code" />
+        {state === 'copied' ? t.report.copied : t.report.copyFixPrompt}
+      </button>
+      <span className="vp-field-help">{t.report.copyFixPromptHelp}</span>
+      {state === 'failed' && (
+        <p className="vp-code-note" role="alert">
+          {t.report.copyFailed}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Nom affichable de l'éditeur choisi dans les réglages. */
+const EDITOR_LABELS: Record<string, string> = {
+  vscode: 'VS Code',
+  cursor: 'Cursor',
+  windsurf: 'Windsurf',
+};
+
+/**
+ * Lien « ouvrir dans mon éditeur ».
+ *
+ * Affiché UNIQUEMENT quand on a une racine absolue qui survit au scan et une
+ * ligne. Pour un dépôt GitHub, le clone temporaire est supprimé à la fin du
+ * scan : le lien pointerait dans le vide, on préfère ne rien afficher.
+ */
+export function OpenInEditorLink({
+  finding,
+  sourceRoot,
+}: {
+  finding: ReportFinding;
+  sourceRoot: string | null;
+}) {
+  const { t } = useI18n();
+  const { preferences } = usePreferences();
+  if (sourceRoot === null || finding.line === null) return null;
+
+  const path = `${sourceRoot.replace(/\/$/, '')}/${finding.file}`;
+  const label = EDITOR_LABELS[preferences.editor] ?? preferences.editor;
+
+  return (
+    <a
+      className="vp-action"
+      href={`${preferences.editor}://file/${path}:${finding.line}`}
+      title={t.report.openInEditorHelp}
+    >
+      <Icon name="file" />
+      {t.report.openInEditor(label)}
+    </a>
+  );
+}
+
+export function FindingCard({
+  finding,
+  sourceRoot = null,
+}: {
+  finding: ReportFinding;
+  sourceRoot?: string | null;
+}) {
   const { locale, t } = useI18n();
   const { preferences } = usePreferences();
   // Replié par défaut : exigence explicite de la spec. La préférence peut
@@ -121,6 +259,15 @@ export function FindingCard({ finding }: { finding: ReportFinding }) {
 
       <VerdictNotice finding={finding} />
 
+      {/* Rendre la faille actionnable : voir le code, le donner à un assistant,
+          ou aller le corriger. Avant, on affichait « ligne 3 » et rien d'autre. */}
+      <CodeExcerptBlock excerpt={finding.code_excerpt} />
+
+      <div className="vp-finding-actions">
+        <CopyFixPromptButton finding={finding} />
+        <OpenInEditorLink finding={finding} sourceRoot={sourceRoot} />
+      </div>
+
       <button
         type="button"
         className="vp-toggle"
@@ -133,12 +280,12 @@ export function FindingCard({ finding }: { finding: ReportFinding }) {
       {showTechnical && (
         <div className="vp-finding-technical">
           <dl>
-            <dt>Type de problème</dt>
+            <dt>{t.report.problemType}</dt>
             <dd>
               <VulnerabilityName name={finding.vulnerability} />
             </dd>
 
-            <dt>Où</dt>
+            <dt>{t.report.whereLabel}</dt>
             <dd>
               {finding.file}
               {finding.line !== null ? ` (ligne ${finding.line})` : ''}
@@ -191,7 +338,11 @@ export function ReportView({ report }: { report: SecurityReport }) {
         </p>
       ) : (
         findings.map((finding) => (
-          <FindingCard key={`${finding.vulnerability}-${finding.http_method}-${finding.route}`} finding={finding} />
+          <FindingCard
+            key={`${finding.vulnerability}-${finding.http_method}-${finding.route}`}
+            finding={finding}
+            sourceRoot={report.source_root}
+          />
         ))
       )}
     </section>

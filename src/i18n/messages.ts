@@ -51,6 +51,7 @@ export interface Messages {
     arbitrationRunning: (candidates: number) => string;
     arbitrationDone: string;
     arbitrationPartial: (count: number) => string;
+    arbitrationReused: (count: number) => string;
     reportRunning: string;
     interrupted: string;
     readFailed: string;
@@ -218,6 +219,8 @@ const EN: Messages = {
     arbitrationDone: 'Review complete.',
     arbitrationPartial: (count) =>
       `Partial review: ${count} point(s) could not be double-checked.`,
+    arbitrationReused: (count) =>
+      `${count} point(s) had already been reviewed on this exact code: we reused those conclusions instead of paying for them again.`,
     reportRunning: 'Writing your report in plain language...',
     interrupted: 'The analysis stopped before it could produce a report.',
     readFailed: 'We could not read your code. The analysis stops here.',
@@ -426,6 +429,8 @@ const FR: Messages = {
     arbitrationDone: 'Relecture terminée.',
     arbitrationPartial: (count) =>
       `Relecture partielle : ${count} point(s) n'ont pas pu être revérifiés.`,
+    arbitrationReused: (count) =>
+      `${count} point(s) avaient déjà été relus sur exactement ce code : on a repris ces conclusions au lieu de les repayer.`,
     reportRunning: 'On rédige ton rapport en français simple...',
     interrupted: "L'analyse s'est interrompue avant de produire un rapport.",
     readFailed: "On n'a pas réussi à lire ton code. L'analyse s'arrête ici.",

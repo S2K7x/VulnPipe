@@ -15,6 +15,7 @@ import type { LlmClient } from '../nodes/shared/llm/types.ts';
 import { analyzeRouteForIdor } from '../nodes/idor/node.ts';
 import { aggregate, fromNodeVerdict, type NodeFinding, type AggregationResult } from '../aggregator/aggregator.ts';
 import { arbitrate } from '../master/claude-client.ts';
+import type { ArbitrationCache } from '../master/arbitration-cache.ts';
 import { buildReport, type SecurityReport } from '../master/report-builder.ts';
 import { StepEmitter, zoneOf, type StepName } from './step-events.ts';
 import { UsageTracker, type UsageReport } from './usage-tracker.ts';
@@ -115,6 +116,14 @@ export interface PipelineOptions {
    * l'utilisateur, pas à l'exploitant du serveur.
    */
   bypassClaudeForHighConfidence?: boolean;
+  /**
+   * Cache de verdicts d'arbitrage, partagé entre les scans.
+   *
+   * Absent = aucun cache. C'est le serveur qui en possède un (il vit d'un scan
+   * à l'autre) ; les scripts et les tests n'en fournissent pas, pour ne jamais
+   * mesurer une calibration à travers un état caché.
+   */
+  arbitrationCache?: ArbitrationCache;
 }
 
 export interface PreparedScan {
@@ -385,13 +394,17 @@ export async function runScan(request: ScanRequest, options: PipelineOptions): P
       llm: masterLlm,
       contextProvider: provider,
       locale,
+      cache: options.arbitrationCache,
     });
+    // Un scan qui coûte moins que le précédent sans rien dire ressemble à une
+    // analyse au rabais. Quand des verdicts viennent du cache, on l'annonce.
+    const reused = outcome.cache_hits > 0 ? ` ${t.arbitrationReused(outcome.cache_hits)}` : '';
     emitter.emit(
       'master_review',
       outcome.unarbitrated.length > 0 ? 'failed' : 'done',
-      outcome.unarbitrated.length > 0
+      (outcome.unarbitrated.length > 0
         ? t.arbitrationPartial(outcome.unarbitrated.length)
-        : t.arbitrationDone,
+        : t.arbitrationDone) + reused,
       { usage: tracker.snapshot() }
     );
 

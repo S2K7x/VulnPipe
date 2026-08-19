@@ -451,8 +451,17 @@ Cocher au fur et à mesure. Chaque phase correspond à un fichier
       - Le `ContextProvider` passé à l'arbitre suppose que toutes les routes
         vivent dans le même index. Un scan multi-dépôts demandera d'associer
         chaque finding à son provider.
-      - Pas de cache d'arbitrage : deux scans successifs sur un code inchangé
-        repaient l'appel master.
+      - ~~Pas de cache d'arbitrage : deux scans successifs sur un code inchangé
+        repaient l'appel master.~~ **Corrigé (2026-08-19)** —
+        `src/master/arbitration-cache.ts`. La clé porte le CODE réellement
+        montré à l'arbitre, pas l'identifiant de la route : sans ça, le cache
+        resservirait « vulnérabilité confirmée » sur du code corrigé. Ne
+        mémorise ni les findings non arbitrés, ni les verdicts rendus sans
+        avoir vu le code — leur texte de preuve est constant, donc leur clé ne
+        bougerait pas quand le code change.
+        Reste ouvert : le cache vit en mémoire dans le serveur et ne survit pas
+        à un redémarrage. La persistance dépend de la décision de stockage du
+        point 5 de la file d'attente.
 
 - [x] **Phase 6 — Orchestration + UI** ✅ livrée — **MVP COMPLET**
       File de messages, déclenchement sur webhook Git, interface qui affiche la

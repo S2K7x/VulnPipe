@@ -30,6 +30,7 @@
 
 import { DEFAULT_LOCALE, type Locale } from '../i18n/locale.ts';
 import { messages } from '../i18n/messages.ts';
+import { arbitrationCacheKey, type ArbitrationCache } from './arbitration-cache.ts';
 import type { AggregatedFinding } from '../aggregator/aggregator.ts';
 import type { ContextProvider } from '../nodes/shared/mcp-client.ts';
 import { AnthropicClient } from '../nodes/shared/llm/anthropic.ts';
@@ -69,6 +70,14 @@ export interface ArbitrationOutcome {
   usage: { input_tokens: number; output_tokens: number; calls: number; latency_ms: number };
   provider: string;
   model: string;
+  /**
+   * Verdicts resservis depuis le cache, donc non repayés.
+   *
+   * Exposé plutôt que silencieux : l'utilisateur doit pouvoir comprendre
+   * pourquoi un scan a coûté moins que le précédent, sinon la baisse ressemble
+   * à une analyse au rabais.
+   */
+  cache_hits: number;
 }
 
 export const MASTER_SYSTEM_PROMPT = `Vous êtes l'arbitre final d'une chaîne d'analyse de sécurité applicative.
@@ -213,6 +222,14 @@ export interface MasterOptions {
   contextProvider?: ContextProvider;
   /** Langue du rapport rédigé par l'arbitre. */
   locale?: Locale;
+  /**
+   * Cache de verdicts. Absent = aucun cache (comportement d'origine).
+   *
+   * Il n'est JAMAIS activé par défaut ici : un cache implicite dans une
+   * fonction d'arbitrage rendrait les tests et les mesures de calibration
+   * dépendants d'un état caché. C'est l'appelant qui décide.
+   */
+  cache?: ArbitrationCache;
 }
 
 /**
@@ -237,6 +254,7 @@ export async function arbitrate(
       usage: { input_tokens: 0, output_tokens: 0, calls: 0, latency_ms: 0 },
       provider: llm.provider,
       model: llm.model,
+      cache_hits: 0,
     };
   }
 
@@ -244,7 +262,52 @@ export async function arbitrate(
     findings.map((finding) => collectEvidence(finding, options.contextProvider))
   );
 
-  const blocks = findings.map((finding, i) => {
+  // --- Ce qui est déjà connu ne repart pas à l'arbitre --------------------
+  //
+  // La clé porte le CODE montré (voir `arbitration-cache.ts`) : corriger la
+  // route change la clé, donc le verdict est réellement recalculé. Un cache
+  // indexé sur le seul identifiant de route resservirait « confirmé » sur du
+  // code désormais sain.
+  const locale = options.locale ?? DEFAULT_LOCALE;
+  const cached: ArbitratedFinding[] = [];
+  const pending: AggregatedFinding[] = [];
+  const pendingEvidence: typeof evidences = [];
+  const keyOf = new Map<AggregatedFinding, string>();
+
+  findings.forEach((finding, i) => {
+    const key = options.cache
+      ? arbitrationCacheKey({
+          finding,
+          evidence: evidences[i]!.text,
+          provider: llm.provider,
+          model: llm.model,
+          locale,
+        })
+      : null;
+    const hit = key === null ? undefined : options.cache!.get(key);
+    if (hit) {
+      cached.push(hit);
+      return;
+    }
+    if (key !== null) keyOf.set(finding, key);
+    pending.push(finding);
+    pendingEvidence.push(evidences[i]!);
+  });
+
+  // Tout était déjà arbitré : aucun appel, donc aucun coût. Ce n'est pas une
+  // panne — les verdicts sont bien là.
+  if (pending.length === 0) {
+    return {
+      arbitrated: cached,
+      unarbitrated: [],
+      usage: { input_tokens: 0, output_tokens: 0, calls: 0, latency_ms: 0 },
+      provider: llm.provider,
+      model: llm.model,
+      cache_hits: cached.length,
+    };
+  }
+
+  const blocks = pending.map((finding, i) => {
     const id = findingId(finding);
     return `--- SIGNALEMENT ${id} ---
 Vulnérabilité suspectée : ${finding.vulnerability}
@@ -259,10 +322,10 @@ Détecté par             : ${finding.detected_by.join(', ')}${
 Ce que le détecteur en dit : ${finding.plain_language_summary}
 
 CODE RÉELLEMENT EXÉCUTÉ PAR CETTE ROUTE :
-${evidences[i]!.text}`;
+${pendingEvidence[i]!.text}`;
   });
 
-  const user = `Voici ${findings.length} signalement(s) à arbitrer. Rends un verdict pour CHACUN,
+  const user = `Voici ${pending.length} signalement(s) à arbitrer. Rends un verdict pour CHACUN,
 en réutilisant exactement le finding_id fourni.
 
 ${blocks.join('\n\n')}`;
@@ -272,7 +335,7 @@ ${blocks.join('\n\n')}`;
 
   try {
     const response = await llm.complete<{ verdicts: Omit<ArbitratedFinding, 'evidence'>[] }>({
-      system: `${MASTER_SYSTEM_PROMPT}\n\n${messages(options.locale ?? DEFAULT_LOCALE).prompt.answerLanguage}`,
+      system: `${MASTER_SYSTEM_PROMPT}\n\n${messages(locale).prompt.answerLanguage}`,
       user,
       schema: ARBITRATION_SCHEMA,
       temperature: 0,
@@ -293,21 +356,24 @@ ${blocks.join('\n\n')}`;
       error instanceof LlmError
         ? `arbitrage indisponible (${error.kind}) : ${error.message}`
         : `arbitrage indisponible : ${(error as Error).message}`;
+    // Les verdicts déjà en cache restent ACQUIS : une panne sur le reste ne
+    // doit pas effacer ce qu'on savait déjà.
     return {
-      arbitrated: [],
-      unarbitrated: findings.map((finding) => ({ finding_id: findingId(finding), why })),
+      arbitrated: cached,
+      unarbitrated: pending.map((finding) => ({ finding_id: findingId(finding), why })),
       usage,
       provider: llm.provider,
       model: llm.model,
+      cache_hits: cached.length,
     };
   }
 
   // Recollage par identifiant : ce qui manque est signalé, pas perdu.
   const byId = new Map((parsed.verdicts ?? []).map((v) => [v.finding_id, v]));
-  const arbitrated: ArbitratedFinding[] = [];
+  const arbitrated: ArbitratedFinding[] = [...cached];
   const unarbitrated: ArbitrationOutcome['unarbitrated'] = [];
 
-  findings.forEach((finding, i) => {
+  pending.forEach((finding, i) => {
     const id = findingId(finding);
     const verdict = byId.get(id);
     if (!verdict) {
@@ -317,8 +383,34 @@ ${blocks.join('\n\n')}`;
       });
       return;
     }
-    arbitrated.push({ ...verdict, finding_id: id, evidence: evidences[i]!.evidence });
+    const complete: ArbitratedFinding = {
+      ...verdict,
+      finding_id: id,
+      evidence: pendingEvidence[i]!.evidence,
+    };
+    arbitrated.push(complete);
+
+    // On ne mémorise QUE les verdicts effectivement rendus SUR DU CODE.
+    //
+    // Deux exclusions, pour la même raison de fond — ne jamais figer une
+    // réponse qui ne reflète pas l'état réel du code :
+    //   - un finding non arbitré (panne, réponse incomplète) doit être
+    //     redemandé au scan suivant ;
+    //   - un verdict rendu sans le code (serveur de contexte injoignable)
+    //     s'appuie sur un texte de preuve CONSTANT. Sa clé ne bougerait donc
+    //     pas quand le code change, et le cache resservirait ce verdict
+    //     aveugle sur du code corrigé — exactement ce que ce cache doit être
+    //     incapable de faire.
+    const key = keyOf.get(finding);
+    if (key !== undefined && complete.evidence === 'code') options.cache?.set(key, complete);
   });
 
-  return { arbitrated, unarbitrated, usage, provider: llm.provider, model: llm.model };
+  return {
+    arbitrated,
+    unarbitrated,
+    usage,
+    provider: llm.provider,
+    model: llm.model,
+    cache_hits: cached.length,
+  };
 }

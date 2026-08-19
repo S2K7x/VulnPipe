@@ -184,6 +184,10 @@ export interface Dictionary {
     arbitrationHelp: string;
     model: string;
     modelPlaceholder: string;
+    modelHint: string;
+    effortLabel: string;
+    effortHint: string;
+    effortNames: Record<'default' | 'low' | 'medium' | 'high' | 'xhigh' | 'max', string>;
     unavailable: string;
     keyMissing: string;
     cannotUse: (why: string) => string;
@@ -383,7 +387,7 @@ const EN: Dictionary = {
     cost: 'Cost',
     routes: 'Addresses checked',
     calls: 'AI calls',
-    routesHint: (free, billed) => `${free} without AI, ${billed} with`,
+    routesHint: (noAi, withAi) => `${noAi} settled without AI, ${withAi} sent to a model`,
     callsHint: 'the only billed item',
     costFree: 'Free',
     costUnknown: 'Not priceable',
@@ -415,7 +419,7 @@ const EN: Dictionary = {
     countersGrey: 'to double-check',
     countersSafe: 'all clear',
     countersCalls: 'AI call(s)',
-    countersFree: (n) => ` · ${n} free verdict(s)`,
+    countersFree: (n) => ` · ${n} settled without AI`,
     countersSpent: 'spent',
     countersNotReported: ' (not reported)',
     waiting: 'The first verdicts will show up here, address by address.',
@@ -515,7 +519,7 @@ const EN: Dictionary = {
     hide: 'Hide',
     costTitle: 'Why this costs almost nothing',
     costBody:
-      'Most addresses in your application are settled by free automatic checks. Only the genuinely doubtful cases go to an AI, and only the most ambiguous reach the second, pricier review. You get the exact breakdown of what was consumed at the end of every analysis.',
+      'Most addresses in your application are settled by automatic checks that use no AI at all — zero tokens. Only the genuinely doubtful cases are sent to a model, and only the most ambiguous ones reach the more capable, more expensive one. That is where your tokens go, and you get the exact breakdown at the end of every analysis.',
   },
   report: {
     heading: 'Your report',
@@ -547,7 +551,7 @@ const EN: Dictionary = {
     thinking: 'Thinking',
     costColumn: 'Cost',
     notReported: 'not reported by the provider',
-    free: 'free',
+    free: 'no tokens used',
     byModel: 'By model',
     model: 'Model',
     partial: 'partial',
@@ -569,10 +573,24 @@ const EN: Dictionary = {
     apply: 'Apply',
     applying: 'Applying...',
     lockedDuringScan: 'A scan is running: the setting is frozen until it finishes.',
+    modelHint:
+      'Listed from the least token-hungry to the most capable. A lighter model settles simple cases for far fewer tokens; the most capable one is worth it on genuinely ambiguous code.',
+    effortLabel: 'Thinking depth',
+    effortHint:
+      'How long the model reasons before answering. Deeper thinking burns tokens you never see in the answer — that is where most of the consumption goes. Leave it on the model default unless you have a reason.',
+    effortNames: {
+      default: "Model default (don't force it)",
+      low: 'Minimal — fewest tokens, fastest',
+      medium: 'Moderate',
+      high: 'Deep — the usual default',
+      xhigh: 'Deeper — noticeably more tokens',
+      max: 'Maximum — most tokens, for the hardest cases',
+    },
     names: {
       gemini: 'Google Gemini',
       ollama: 'Ollama (on your machine)',
       anthropic: 'Claude (Anthropic)',
+      'claude-subscription': 'My Claude subscription',
       openai: 'OpenAI',
       openrouter: 'OpenRouter',
       custom: 'Custom server',
@@ -581,8 +599,10 @@ const EN: Dictionary = {
       gemini: 'Fast and cheap. One key is enough.',
       ollama: 'Free and private: nothing leaves your computer.',
       anthropic: 'The most reliable for settling ambiguous cases.',
+      'claude-subscription':
+        'Uses the Claude Pro or Max plan you already pay for, through Claude Code on this machine. No API key, nothing extra billed per call.',
       openai: 'GPT models.',
-      openrouter: 'Access to many models, including free ones.',
+      openrouter: 'Access to many models, from the very cheap to the most capable.',
       custom: 'Any OpenAI-compatible server you host yourself.',
     },
   },
@@ -596,7 +616,7 @@ const EN: Dictionary = {
     ctaSecondary: 'See how it works',
     stats: [
       { value: '7', label: 'steps, all visible while they run' },
-      { value: '10-15%', label: 'of findings ever reach the paid model' },
+      { value: '10-15%', label: 'of findings ever reach the most capable model' },
       { value: '0', label: 'lines of JSON you have to read' },
     ],
     problemKicker: 'The problem',
@@ -620,11 +640,11 @@ const EN: Dictionary = {
     flowKicker: 'Architecture',
     flowTitle: 'What actually happens to your code',
     flowLede:
-      'Your code is read locally, understood as a graph, examined by specialised detectors, then filtered. Only the genuinely ambiguous cases are sent to a paid model — and you see the whole path while it runs.',
+      'Your code is read locally, understood as a graph, examined by specialised detectors, then filtered. Only the genuinely ambiguous cases are sent to the more capable model — and you see the whole path while it runs.',
     flowCaption:
-      'Everything on the left of the filter runs on your machine or on free models. The paid step is the last one, and it only ever sees a shortlist.',
+      'Everything on the left of the filter runs on your machine or on low-cost models. The step that really spends tokens is the last one, and it only ever sees a shortlist.',
     diagram: {
-      localLabel: 'Local — free',
+      localLabel: 'Local — no tokens',
       cloudLabel: 'Paid — shortlist only',
       commit: 'Your code',
       commitNote: 'a folder, a file, or a public repository',
@@ -640,8 +660,8 @@ const EN: Dictionary = {
       masterNote: 'settles the ambiguous cases against the real code',
       report: 'Your report',
       reportNote: 'plain language, technical detail folded',
-      free: 'settled for free',
-      billed: 'sent to the paid model',
+      free: 'settled without AI',
+      billed: 'sent to a model',
       dropped: 'dropped as noise',
     },
     stepsKicker: 'Step by step',
@@ -651,7 +671,7 @@ const EN: Dictionary = {
     zonesKicker: 'Confidence',
     zonesTitle: 'Three zones, not a yes/no',
     zonesLede:
-      'Every detector returns a confidence score rather than a verdict. That single decision is what keeps the cost down and the false alarms out: certainty is free, doubt is what deserves a second look.',
+      'Every detector returns a confidence score rather than a verdict. That single decision is what keeps the cost down and the false alarms out: certainty costs no tokens, doubt is what deserves a second look.',
     zones: [
       {
         range: '0.0 - 0.3',
@@ -675,12 +695,12 @@ const EN: Dictionary = {
     costKicker: 'Economics',
     costTitle: 'Why this costs almost nothing',
     costLede:
-      'The expensive model is not a scanner, it is a referee. It is called once, at the end, on what survived every free filter before it.',
+      'The most capable model is not a scanner, it is a referee. It is called once, at the end, on what survived every check that cost nothing.',
     funnel: [
-      { label: 'Addresses found in your code', note: 'read locally, free', share: 100 },
-      { label: 'Suspicious enough to look at', note: 'pattern checks, still free', share: 45 },
+      { label: 'Addresses found in your code', note: 'read locally, no tokens', share: 100 },
+      { label: 'Suspicious enough to look at', note: 'pattern checks, still no tokens', share: 45 },
       { label: 'Examined by a local or cheap model', note: 'the bulk of the analysis', share: 25 },
-      { label: 'Sent to the paid second opinion', note: 'the only billed step', share: 12 },
+      { label: 'Sent to the most capable model', note: 'the only step that really spends', share: 12 },
     ],
     costPoints: [
       {
@@ -746,7 +766,7 @@ const EN: Dictionary = {
       },
       {
         title: 'Nothing is spent without your word',
-        body: 'The estimate step reads your code and prices the work without calling a single paid model. You decide whether it happens.',
+        body: 'The estimate step reads your code and prices the work without calling a single model. You decide whether it happens.',
       },
     ],
     faqKicker: 'Questions',
@@ -762,7 +782,7 @@ const EN: Dictionary = {
       },
       {
         q: 'What does a scan actually cost?',
-        a: 'You get the number before you commit to it. Only calls to hosted models are billed; the deterministic checks and any local model are free. Everyday incremental scans usually land in the fractions of a cent.',
+        a: 'You get the number before you commit to it. Only calls to hosted models spend tokens; the deterministic checks and any model running on your own machine spend none. Everyday incremental scans usually land in the fractions of a cent.',
       },
       {
         q: 'Will it flood me with false alarms?',
@@ -808,7 +828,7 @@ const EN: Dictionary = {
       'The filter sorts every finding by confidence before anything is billed. These are the thresholds it uses.',
     bypassLabel: 'Report near-certain holes without a second opinion',
     bypassHelp:
-      'Findings above 0.7 go straight to your report instead of being re-read by the paid model. Faster and cheaper.',
+      'Findings above 0.7 go straight to your report instead of being re-read by the most capable model. Faster and cheaper.',
     bypassWarning:
       'The second opinion is also what writes the plain-language summary. Skipping it gives you a rawer report.',
     thresholdsTitle: 'Confidence thresholds',
@@ -933,7 +953,7 @@ const FR: Dictionary = {
     cost: 'Coût',
     routes: 'Adresses vérifiées',
     calls: "Appels à l'IA",
-    routesHint: (free, billed) => `${free} sans IA, ${billed} avec`,
+    routesHint: (sansIa, versModele) => `${sansIa} tranchées sans IA, ${versModele} envoyées à un modèle`,
     callsHint: "c'est le seul poste facturé",
     costFree: 'Gratuit',
     costUnknown: 'Non chiffrable',
@@ -946,7 +966,7 @@ const FR: Dictionary = {
     detailShow: 'Sur quoi repose cette estimation ?',
     detailHide: 'Masquer',
     detailIntro:
-      "Ce n'est pas une devinette : on a réellement lu ton code, relié les morceaux entre eux et préparé les questions à poser à l'IA. La seule chose qu'on n'a pas faite, c'est poser les questions — c'est la seule étape payante.",
+      "Ce n'est pas une devinette : on a réellement lu ton code, relié les morceaux entre eux et préparé les questions à poser à l'IA. La seule chose qu'on n'a pas faite, c'est poser les questions — c'est la seule étape qui consomme des jetons.",
     detailSampled: (size) =>
       ` Les ${size} premières adresses ont été mesurées en vrai, le reste est extrapolé.`,
     volume: (thousands) => `Volume estimé : environ ${thousands} millier(s) de mots-machine traités.`,
@@ -966,7 +986,7 @@ const FR: Dictionary = {
     countersGrey: 'à faire vérifier',
     countersSafe: 'sans souci',
     countersCalls: "appel(s) à l'IA",
-    countersFree: (n) => ` · ${n} verdict(s) gratuit(s)`,
+    countersFree: (n) => ` · ${n} tranché(s) sans IA`,
     countersSpent: 'dépensé',
     countersNotReported: ' (non communiqué)',
     waiting: 'Les premiers verdicts vont apparaître ici, adresse par adresse.',
@@ -1071,7 +1091,7 @@ const FR: Dictionary = {
     hide: 'Masquer',
     costTitle: "Pourquoi ça ne coûte presque rien",
     costBody:
-      "La plupart des adresses de ton application sont tranchées par des vérifications automatiques gratuites. Seuls les cas réellement douteux sont soumis à une intelligence artificielle, et seuls les plus ambigus vont jusqu'à la seconde relecture, plus coûteuse. Tu vois le détail exact de ce qui a été consommé à la fin de chaque analyse.",
+      "La plupart des adresses de ton application sont tranchées par des vérifications automatiques qui n'utilisent aucune IA — zéro jeton consommé. Seuls les cas réellement douteux partent vers un modèle, et seuls les plus ambigus atteignent le modèle le plus capable, donc le plus coûteux en jetons. C'est là que vont tes jetons, et tu en as le détail exact à la fin de chaque analyse.",
   },
   report: {
     heading: 'Ton rapport',
@@ -1103,7 +1123,7 @@ const FR: Dictionary = {
     thinking: 'Réflexion',
     costColumn: 'Coût',
     notReported: 'non communiqué par le fournisseur',
-    free: 'gratuit',
+    free: 'aucun jeton consommé',
     byModel: 'Par modèle',
     model: 'Modèle',
     partial: 'partiel',
@@ -1125,10 +1145,24 @@ const FR: Dictionary = {
     apply: 'Appliquer',
     applying: 'Application...',
     lockedDuringScan: "Un scan est en cours : le réglage est figé jusqu'à la fin.",
+    modelHint:
+      "Classés du moins gourmand en jetons au plus capable. Un modèle léger tranche les cas simples pour bien moins de jetons ; le plus capable vaut le coup sur du code réellement ambigu.",
+    effortLabel: 'Profondeur de réflexion',
+    effortHint:
+      "Combien de temps le modèle réfléchit avant de répondre. Une réflexion profonde consomme des jetons que tu ne vois jamais dans la réponse — c'est là que part l'essentiel de la consommation. Laisse le défaut du modèle si tu n'as pas de raison précise.",
+    effortNames: {
+      default: 'Défaut du modèle (ne rien forcer)',
+      low: 'Minimale — le moins de jetons, le plus rapide',
+      medium: 'Modérée',
+      high: 'Profonde — le défaut habituel',
+      xhigh: 'Plus profonde — nettement plus de jetons',
+      max: 'Maximale — le plus de jetons, pour les cas les plus durs',
+    },
     names: {
       gemini: 'Google Gemini',
       ollama: 'Ollama (sur ta machine)',
       anthropic: 'Claude (Anthropic)',
+      'claude-subscription': 'Mon abonnement Claude',
       openai: 'OpenAI',
       openrouter: 'OpenRouter',
       custom: 'Serveur personnalisé',
@@ -1137,8 +1171,10 @@ const FR: Dictionary = {
       gemini: 'Rapide et peu coûteux. Une clé suffit.',
       ollama: 'Gratuit et privé : rien ne sort de ton ordinateur.',
       anthropic: 'Le plus fiable pour trancher les cas ambigus.',
+      'claude-subscription':
+        "Utilise l'abonnement Claude Pro ou Max que tu paies déjà, via Claude Code installé sur cette machine. Aucune clé API, rien de facturé en plus à l'appel.",
       openai: 'Modèles GPT.',
-      openrouter: 'Accès à de nombreux modèles, dont des gratuits.',
+      openrouter: 'Accès à de nombreux modèles, du très peu coûteux au plus capable.',
       custom: 'Tout serveur compatible OpenAI que tu héberges.',
     },
   },
@@ -1152,7 +1188,7 @@ const FR: Dictionary = {
     ctaSecondary: 'Voir comment ça marche',
     stats: [
       { value: '7', label: 'étapes, toutes visibles pendant le travail' },
-      { value: '10-15 %', label: 'des cas atteignent le modèle payant' },
+      { value: '10-15 %', label: 'des cas atteignent le modèle le plus capable' },
       { value: '0', label: 'ligne de JSON à lire' },
     ],
     problemKicker: 'Le problème',
@@ -1176,11 +1212,11 @@ const FR: Dictionary = {
     flowKicker: 'Architecture',
     flowTitle: 'Ce qui arrive réellement à ton code',
     flowLede:
-      "Ton code est lu en local, compris comme un graphe, examiné par des détecteurs spécialisés, puis filtré. Seuls les cas réellement ambigus partent vers un modèle payant — et tu vois tout le trajet pendant qu'il se fait.",
+      "Ton code est lu en local, compris comme un graphe, examiné par des détecteurs spécialisés, puis filtré. Seuls les cas réellement ambigus partent vers le modèle le plus capable — et tu vois tout le trajet pendant qu'il se fait.",
     flowCaption:
-      "Tout ce qui est à gauche du filtre tourne sur ta machine ou sur des modèles gratuits. L'étape payante est la dernière, et elle ne voit qu'une liste courte.",
+      "Tout ce qui est à gauche du filtre tourne sur ta machine ou sur des modèles peu coûteux. L'étape la plus coûteuse en jetons est la dernière, et elle ne voit qu'une liste courte.",
     diagram: {
-      localLabel: 'En local — gratuit',
+      localLabel: 'En local — aucun jeton',
       cloudLabel: 'Payant — liste courte',
       commit: 'Ton code',
       commitNote: 'un dossier, un fichier, ou un dépôt public',
@@ -1196,8 +1232,8 @@ const FR: Dictionary = {
       masterNote: 'tranche les cas ambigus face au vrai code',
       report: 'Ton rapport',
       reportNote: 'langage clair, détail technique replié',
-      free: 'réglé gratuitement',
-      billed: 'envoyé au modèle payant',
+      free: 'réglé sans IA',
+      billed: 'envoyé à un modèle',
       dropped: 'écarté comme bruit',
     },
     stepsKicker: 'Étape par étape',
@@ -1207,7 +1243,7 @@ const FR: Dictionary = {
     zonesKicker: 'Confiance',
     zonesTitle: 'Trois zones, pas un oui/non',
     zonesLede:
-      "Chaque détecteur rend un score de confiance plutôt qu'un verdict. C'est cette seule décision qui tient le coût bas et les fausses alertes dehors : la certitude est gratuite, c'est le doute qui mérite un second regard.",
+      "Chaque détecteur rend un score de confiance plutôt qu'un verdict. C'est cette seule décision qui tient le coût bas et les fausses alertes dehors : la certitude ne coûte aucun jeton, c'est le doute qui mérite un second regard.",
     zones: [
       {
         range: '0.0 - 0.3',
@@ -1231,12 +1267,12 @@ const FR: Dictionary = {
     costKicker: 'Économie',
     costTitle: 'Pourquoi ça ne coûte presque rien',
     costLede:
-      "Le modèle cher n'est pas un scanner, c'est un arbitre. Il est appelé une fois, à la fin, sur ce qui a survécu à tous les filtres gratuits.",
+      "Le modèle le plus capable n'est pas un scanner, c'est un arbitre. Il est appelé une fois, à la fin, sur ce qui a survécu à tous les filtres qui ne consomment rien.",
     funnel: [
-      { label: 'Adresses trouvées dans ton code', note: 'lues en local, gratuit', share: 100 },
-      { label: 'Assez suspectes pour être regardées', note: 'vérifications par motifs, gratuit', share: 45 },
+      { label: 'Adresses trouvées dans ton code', note: 'lues en local, aucun jeton', share: 100 },
+      { label: 'Assez suspectes pour être regardées', note: 'vérifications par motifs, aucun jeton', share: 45 },
       { label: 'Examinées par un modèle local ou bon marché', note: "le gros de l'analyse", share: 25 },
-      { label: 'Envoyées au second avis payant', note: 'le seul poste facturé', share: 12 },
+      { label: 'Envoyées au modèle le plus capable', note: 'le seul poste qui consomme vraiment', share: 12 },
     ],
     costPoints: [
       {
@@ -1302,7 +1338,7 @@ const FR: Dictionary = {
       },
       {
         title: 'Rien n’est dépensé sans ton accord',
-        body: "L'étape de devis lit ton code et chiffre le travail sans appeler un seul modèle payant. C'est toi qui décides si ça a lieu.",
+        body: "L'étape de devis lit ton code et chiffre le travail sans appeler un seul modèle. C'est toi qui décides si ça a lieu.",
       },
     ],
     faqKicker: 'Questions',
@@ -1318,7 +1354,7 @@ const FR: Dictionary = {
       },
       {
         q: 'Combien coûte réellement une analyse ?',
-        a: "Tu as le chiffre avant de t'engager. Seuls les appels aux modèles hébergés sont facturés ; les vérifications déterministes et un modèle local sont gratuits. Une analyse incrémentale du quotidien tombe généralement sous le centime.",
+        a: "Tu as le chiffre avant de t'engager. Seuls les appels aux modèles hébergés consomment des jetons ; les vérifications déterministes et un modèle qui tourne chez toi n'en consomment aucun. Une analyse incrémentale du quotidien tombe généralement sous le centime.",
       },
       {
         q: 'Est-ce que je vais crouler sous les fausses alertes ?',
@@ -1364,7 +1400,7 @@ const FR: Dictionary = {
       "Le filtre trie chaque résultat par confiance avant que quoi que ce soit ne soit facturé. Voilà les seuils qu'il applique.",
     bypassLabel: 'Remonter les failles quasi certaines sans second avis',
     bypassHelp:
-      'Les résultats au-dessus de 0.7 vont directement dans ton rapport au lieu d’être relus par le modèle payant. Plus rapide et moins cher.',
+      'Les résultats au-dessus de 0.7 vont directement dans ton rapport au lieu d’être relus par le modèle le plus capable. Plus rapide et moins cher.',
     bypassWarning:
       "Le second avis est aussi ce qui rédige le résumé en langage clair. S'en passer donne un rapport plus brut.",
     thresholdsTitle: 'Seuils de confiance',

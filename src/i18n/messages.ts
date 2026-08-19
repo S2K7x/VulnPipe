@@ -104,6 +104,9 @@ export interface Messages {
   providers: {
     missingKey: (envVar: string) => string;
     missingAnthropic: string;
+    missingClaudeCode: string;
+    unknownEffort: (value: string) => string;
+    apiKeyShadowsSubscription: string;
     missingBaseUrl: string;
     unusable: string;
     invalidSetting: string;
@@ -226,7 +229,7 @@ const EN: Messages = {
         costUsd === null
           ? ''
           : costUsd === 0
-            ? ' — free so far'
+            ? ' — no tokens billed so far'
             : ` — $${costUsd.toFixed(4)} spent so far`;
       return `${calls} call(s) to the AI, about ${thousandWords} thousand words processed${cost}.`;
     },
@@ -239,7 +242,7 @@ const EN: Messages = {
 
   estimate: {
     nothingToScan:
-      'Nothing to analyze: none of your application addresses are affected by what you changed. This scan will be instant and free.',
+      'Nothing to analyze: none of your application addresses are affected by what you changed. This scan will be instant and will not spend a single token.',
     noRoutesFound:
       'We found no address to analyze here. Check that you pointed at the right folder — VulnPipe looks for web routes (controllers, API entry points).',
     willCheck: (routes) =>
@@ -253,7 +256,7 @@ const EN: Messages = {
         ? 'One needs an AI opinion, because the case is not clear-cut.'
         : `${count} need an AI opinion, because the cases are not clear-cut.`,
     duration: (low, high) => `Expect roughly ${low} to ${high}.`,
-    isFree: 'This scan is free: the engine you picked does not charge anything.',
+    isFree: 'This scan costs you nothing: the engine you picked does not bill tokens.',
     costRange: (low, high) => `Estimated cost: between ${low} and ${high}.`,
     costSingle: (value) => `Estimated cost: about ${value}.`,
     lessThanACent: 'In other words, less than one cent.',
@@ -289,7 +292,7 @@ const EN: Messages = {
       `Cost known for part of the calls: ${amount} (some providers do not report their prices).`,
     costUnknown:
       'The provider used does not report cost: only the volume processed can be measured.',
-    free: 'free',
+    free: 'nothing billed',
     thinkingHeavy:
       "Most of what you paid for is the model's internal reasoning, not the text it produced: that is normal, but that is where the budget goes.",
     models: (list) => `Model(s) used: ${list}.`,
@@ -299,6 +302,12 @@ const EN: Messages = {
     missingKey: (envVar) => `${envVar} is missing from your .env file.`,
     missingAnthropic:
       'ANTHROPIC_API_KEY is missing from your .env file (an `ant auth login` session also works, but cannot be detected here).',
+    unknownEffort: (value) =>
+      `"${value}" is not a thinking depth. Pick one of: low, medium, high, xhigh, max.`,
+    missingClaudeCode:
+      'Claude Code was not found on this machine. Install it and sign in with your Claude account, then this option uses your subscription instead of a paid key.',
+    apiKeyShadowsSubscription:
+      'An API key in your environment takes priority over your Claude subscription: usage would be billed per call. Remove ANTHROPIC_API_KEY to use your subscription.',
     missingBaseUrl: 'VULNPIPE_LLM_BASE_URL is missing: point it at your server address.',
     unusable:
       'That provider cannot be used right now: its access key is missing. Your previous setting is kept.',
@@ -434,7 +443,7 @@ const FR: Messages = {
         costUsd === null
           ? ''
           : costUsd === 0
-            ? " — gratuit jusqu'ici"
+            ? " — aucun jeton facturé jusqu'ici"
             : ` — ${costUsd.toFixed(4)} $ dépensés jusqu'ici`;
       return `${calls} appel(s) à l'intelligence artificielle, environ ${thousandWords} millier(s) de mots traités${cout}.`;
     },
@@ -448,7 +457,7 @@ const FR: Messages = {
 
   estimate: {
     nothingToScan:
-      "Rien à analyser : aucune adresse de ton application n'est concernée par ce que tu as modifié. Ce scan sera instantané et gratuit.",
+      "Rien à analyser : aucune adresse de ton application n'est concernée par ce que tu as modifié. Ce scan sera instantané et ne consommera aucun jeton.",
     noRoutesFound:
       "On n'a trouvé aucune adresse à analyser ici. Vérifie que tu as bien indiqué le bon dossier — VulnPipe cherche des routes web (contrôleurs, points d'entrée d'API).",
     willCheck: (routes) =>
@@ -462,7 +471,7 @@ const FR: Messages = {
         ? "Une seule demande l'avis d'une intelligence artificielle, parce que le cas n'est pas évident."
         : `${count} demandent l'avis d'une intelligence artificielle, parce que le cas n'est pas évident.`,
     duration: (low, high) => `Compte environ ${low} à ${high}.`,
-    isFree: 'Ce scan est gratuit : le moteur choisi ne facture rien.',
+    isFree: 'Ce scan ne te coûte rien : le moteur choisi ne facture aucun jeton.',
     costRange: (low, high) => `Coût estimé : entre ${low} et ${high}.`,
     costSingle: (value) => `Coût estimé : environ ${value}.`,
     lessThanACent: "Autrement dit, moins d'un centime.",
@@ -498,7 +507,7 @@ const FR: Messages = {
       `Coût connu pour une partie des appels : ${amount} (certains fournisseurs ne communiquent pas leurs prix).`,
     costUnknown:
       "Le coût n'est pas communiqué par le fournisseur utilisé : seul le volume traité est mesurable.",
-    free: 'gratuit',
+    free: 'rien de facturé',
     thinkingHeavy:
       "La majorité du travail facturé est de la réflexion interne du modèle, pas du texte produit : c'est normal, mais c'est là que part le budget.",
     models: (list) => `Modèle(s) utilisé(s) : ${list}.`,
@@ -508,6 +517,12 @@ const FR: Messages = {
     missingKey: (envVar) => `${envVar} absente du fichier .env.`,
     missingAnthropic:
       "ANTHROPIC_API_KEY absente du fichier .env (une session `ant auth login` fonctionne aussi, mais n'est pas détectable ici).",
+    unknownEffort: (value) =>
+      `« ${value} » n'est pas une profondeur de réflexion. Choisis parmi : low, medium, high, xhigh, max.`,
+    missingClaudeCode:
+      "Claude Code est introuvable sur cette machine. Installe-le et connecte-toi avec ton compte Claude : cette option utilisera alors ton abonnement au lieu d'une clé payante.",
+    apiKeyShadowsSubscription:
+      "Une clé API présente dans ton environnement passe avant ton abonnement Claude : la consommation serait facturée à l'appel. Retire ANTHROPIC_API_KEY pour consommer ton abonnement.",
     missingBaseUrl: "VULNPIPE_LLM_BASE_URL absente : indique l'adresse de ton serveur.",
     unusable:
       "Ce fournisseur n'est pas utilisable pour l'instant : il lui manque sa clé d'accès. Le réglage précédent est conservé.",

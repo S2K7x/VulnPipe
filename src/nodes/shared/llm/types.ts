@@ -32,6 +32,24 @@ export interface JsonSchemaProperty {
   required?: string[];
 }
 
+/**
+ * Profondeur de raisonnement demandée au modèle.
+ *
+ * C'est le levier coût/qualité le plus direct sur les modèles Claude : plus
+ * l'effort est élevé, plus le modèle réfléchit avant de répondre — donc plus il
+ * consomme de jetons de raisonnement, qui sont facturés comme des jetons de
+ * sortie même si l'utilisateur ne les voit jamais.
+ *
+ * On l'expose comme un RÉGLAGE (porté par le client), pas comme un paramètre de
+ * requête : c'est un arbitrage que la personne pose une fois pour toutes, pas
+ * une décision que chaque node devrait prendre.
+ *
+ * Ignoré sans erreur par les fournisseurs qui ne le connaissent pas.
+ */
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+export const EFFORT_LEVELS: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+
 export interface LlmRequest {
   system: string;
   user: string;

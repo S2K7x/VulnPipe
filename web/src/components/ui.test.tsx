@@ -311,7 +311,10 @@ describe('UsagePanel', () => {
 
   it('affiche le coût et le volume, résumé replié par défaut', async () => {
     render(<UsagePanel usage={usage} />);
-    expect(screen.getByText('free')).toBeTruthy();
+    // Vocabulaire volontaire : un scan sans coût se dit en JETONS consommés,
+    // pas en « gratuit » — le but est que la personne comprenne où part sa
+    // consommation, pas seulement si sa carte est débitée.
+    expect(screen.getByText('no tokens used')).toBeTruthy();
     expect(screen.getByText('5')).toBeTruthy();
 
     expect(screen.queryByText('Par étape')).toBeNull();

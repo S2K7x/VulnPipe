@@ -216,6 +216,20 @@ Cocher au fur et à mesure. Chaque phase correspond à un fichier
         une protection par le scanner déterministe — la route bascule en zone
         grise (coût LLM en plus) au lieu d'être tranchée à coût nul. Le suivi
         de flux de données réel resterait le vrai correctif de fond.
+        **[resserré côté noms de méthode la nuit du 2026-08-19, voir
+        NIGHTLY_LOG.md]** `isDataAccess` comparait le nom d'appel à une liste
+        de noms EXACTS (`findone`, `findbyid`...) : une convention ORM réelle
+        mais absente de la liste (`findOneBy` en TypeORM, `findByIdAndUpdate`
+        en Mongoose...) n'était pas reconnue comme un accès aux données et
+        disparaissait complètement de l'analyse. Si une AUTRE requête de la
+        même méthode était filtrée, le verdict décisif "sain" tombait quand
+        même, à coût nul — la requête non reconnue n'avait jamais été
+        examinée. Remplacé par une correspondance de PRÉFIXE sur le même jeu
+        de verbes : un faux positif ne fait plus que renvoyer une route au LLM
+        au lieu de la trancher gratuitement, jamais l'inverse. Toujours
+        heuristique par construction (un verbe métier qui ne commence par
+        aucun de ces préfixes reste invisible) ; le suivi de flux de données
+        reste le vrai correctif de fond.
       - Un seul type de vuln (IDOR). La structure `prompt`/`scanner`/`node`
         est copiable telle quelle ; seuls la grille et les directives changent.
       - Pas encore de parcours automatique de toutes les routes ni de

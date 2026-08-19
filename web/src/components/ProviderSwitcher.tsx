@@ -17,7 +17,14 @@ import { useState } from 'react';
 
 import { useI18n } from '../i18n/context.tsx';
 
-export type ProviderName = 'gemini' | 'ollama' | 'anthropic' | 'openai' | 'openrouter' | 'custom';
+export type ProviderName =
+  | 'gemini'
+  | 'ollama'
+  | 'anthropic'
+  | 'claude-subscription'
+  | 'openai'
+  | 'openrouter'
+  | 'custom';
 
 export interface ProviderSettings {
   nodeProvider: ProviderName;
@@ -45,6 +52,8 @@ const SUGGESTED_MODELS: Partial<Record<ProviderName, string[]>> = {
   gemini: ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
   openrouter: ['openrouter/free', 'openai/gpt-oss-20b:free', 'z-ai/glm-5.2:free'],
   anthropic: ['claude-opus-5', 'claude-sonnet-5'],
+  // « default » = le modèle de la session Claude Code, sans rien forcer.
+  'claude-subscription': ['default', 'claude-opus-5', 'claude-sonnet-5'],
   ollama: ['qwen3.5:9b'],
 };
 

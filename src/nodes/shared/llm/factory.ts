@@ -12,24 +12,53 @@
  *             OPENROUTER_API_KEY, VULNPIPE_LLM_BASE_URL (pour `custom`).
  */
 
+import { existsSync } from 'node:fs';
+import { delimiter, join } from 'node:path';
+
 import { DEFAULT_LOCALE, type Locale } from '../../../i18n/locale.ts';
 import { messages } from '../../../i18n/messages.ts';
 import { AnthropicClient, DEFAULT_ANTHROPIC_MODEL } from './anthropic.ts';
+import { ClaudeSubscriptionClient, DEFAULT_SUBSCRIPTION_MODEL } from './claude-subscription.ts';
 import { DEFAULT_GEMINI_MODEL, GeminiClient } from './gemini.ts';
 import { OllamaClient } from './ollama.ts';
 import { OpenAiCompatibleClient } from './openai-compatible.ts';
 import { LlmError, type LlmClient } from './types.ts';
 
-export type ProviderName = 'gemini' | 'ollama' | 'anthropic' | 'openai' | 'openrouter' | 'custom';
+export type ProviderName =
+  | 'gemini'
+  | 'ollama'
+  | 'anthropic'
+  | 'claude-subscription'
+  | 'openai'
+  | 'openrouter'
+  | 'custom';
 
 export const SUPPORTED_PROVIDERS: ProviderName[] = [
   'gemini',
   'ollama',
   'anthropic',
+  'claude-subscription',
   'openai',
   'openrouter',
   'custom',
 ];
+
+/**
+ * Claude Code est-il installé sur cette machine ?
+ *
+ * On cherche l'exécutable dans le PATH plutôt que de tenter un appel : c'est
+ * synchrone, gratuit, et suffisant pour distinguer « pas installé » (message
+ * actionnable) de « installé mais peut-être pas connecté » — ce second cas
+ * n'est constatable qu'à l'appel, et on ne prétend donc rien à son sujet.
+ */
+export function claudeCodeInstalled(env: { PATH?: string } = process.env): boolean {
+  const path = env.PATH;
+  if (!path) return false;
+  return path
+    .split(delimiter)
+    .filter(Boolean)
+    .some((directory) => existsSync(join(directory, 'claude')));
+}
 
 export interface FactoryEnv {
   VULNPIPE_LLM_PROVIDER?: string;
@@ -85,6 +114,14 @@ export function createLlmClient(env: FactoryEnv = process.env as FactoryEnv): Ll
       return new AnthropicClient({
         apiKey: env.ANTHROPIC_API_KEY,
         model: model ?? DEFAULT_ANTHROPIC_MODEL,
+      });
+
+    // Abonnement Claude Pro/Max via Claude Code — aucune clé API à fournir :
+    // l'authentification est la session que la personne a ouverte elle-même.
+    case 'claude-subscription':
+      return new ClaudeSubscriptionClient({
+        model: model ?? DEFAULT_SUBSCRIPTION_MODEL,
+        onWarning: (text) => console.warn(`[VulnPipe] ${text}`),
       });
 
     case 'openai':
@@ -187,6 +224,18 @@ export function describeProviders(
         // savoir sans requête réseau, donc on l'annonce comme utilisable et
         // c'est l'erreur d'appel qui informera précisément.
         return ready(id);
+      case 'claude-subscription': {
+        // Deux causes d'indisponibilité, distinctes et toutes deux actionnables.
+        if (!claudeCodeInstalled(env as { PATH?: string })) {
+          return missing(id, t.missingClaudeCode);
+        }
+        // Une clé API l'emporterait silencieusement sur l'abonnement : on
+        // refuse de présenter comme « abonnement » ce qui serait facturé à
+        // l'appel. Le fournisseur reste utilisable, mais on dit pourquoi il
+        // ne ferait pas ce qu'il annonce.
+        if (env.ANTHROPIC_API_KEY) return missing(id, t.apiKeyShadowsSubscription);
+        return ready(id);
+      }
       case 'custom':
         return env.VULNPIPE_LLM_BASE_URL ? ready(id) : missing(id, t.missingBaseUrl);
     }

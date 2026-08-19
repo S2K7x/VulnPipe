@@ -104,6 +104,8 @@ export interface Messages {
   providers: {
     missingKey: (envVar: string) => string;
     missingAnthropic: string;
+    missingClaudeCode: string;
+    apiKeyShadowsSubscription: string;
     missingBaseUrl: string;
     unusable: string;
     invalidSetting: string;
@@ -299,6 +301,10 @@ const EN: Messages = {
     missingKey: (envVar) => `${envVar} is missing from your .env file.`,
     missingAnthropic:
       'ANTHROPIC_API_KEY is missing from your .env file (an `ant auth login` session also works, but cannot be detected here).',
+    missingClaudeCode:
+      'Claude Code was not found on this machine. Install it and sign in with your Claude account, then this option uses your subscription instead of a paid key.',
+    apiKeyShadowsSubscription:
+      'An API key in your environment takes priority over your Claude subscription: usage would be billed per call. Remove ANTHROPIC_API_KEY to use your subscription.',
     missingBaseUrl: 'VULNPIPE_LLM_BASE_URL is missing: point it at your server address.',
     unusable:
       'That provider cannot be used right now: its access key is missing. Your previous setting is kept.',
@@ -508,6 +514,10 @@ const FR: Messages = {
     missingKey: (envVar) => `${envVar} absente du fichier .env.`,
     missingAnthropic:
       "ANTHROPIC_API_KEY absente du fichier .env (une session `ant auth login` fonctionne aussi, mais n'est pas détectable ici).",
+    missingClaudeCode:
+      "Claude Code est introuvable sur cette machine. Installe-le et connecte-toi avec ton compte Claude : cette option utilisera alors ton abonnement au lieu d'une clé payante.",
+    apiKeyShadowsSubscription:
+      "Une clé API présente dans ton environnement passe avant ton abonnement Claude : la consommation serait facturée à l'appel. Retire ANTHROPIC_API_KEY pour consommer ton abonnement.",
     missingBaseUrl: "VULNPIPE_LLM_BASE_URL absente : indique l'adresse de ton serveur.",
     unusable:
       "Ce fournisseur n'est pas utilisable pour l'instant : il lui manque sa clé d'accès. Le réglage précédent est conservé.",

@@ -721,3 +721,56 @@ proxy Vite a été complété, mais l'API ne connaît la route qu'après redéma
 Tests : 283 verts (`npm test`), dont 20 nouveaux sur les icônes, la
 présentation, les préférences et les réglages, et 4 sur les nouvelles routes
 serveur. `npx tsc --noEmit` propre, build de production 293 kB / 91 kB gzip.
+
+---
+
+## Authentification par abonnement Claude (Pro / Max) — livrée le 2026-08-19
+
+`VULNPIPE_LLM_PROVIDER=claude-subscription` fait tourner VulnPipe sur
+l'abonnement Claude que la personne paie déjà, au lieu d'une clé API facturée
+à l'appel. Fichier : `src/nodes/shared/llm/claude-subscription.ts`.
+
+### Pourquoi c'est légitime, et où est la limite
+
+Le chemin passe par le **Claude Agent SDK** (`@anthropic-ai/claude-agent-sdk`),
+le client officiel d'Anthropic, qui s'authentifie via la session Claude Code de
+l'utilisateur. La documentation Anthropic dit explicitement que l'usage du
+Claude Agent SDK, de `claude -p` et **des applications tierces** tire sur les
+limites d'usage de l'abonnement. Ce n'est donc pas un contournement.
+
+**La limite** : ça vaut pour un usage local et mono-utilisateur — le cadre posé
+par `CLAUDE.md` §6. Un service hébergé qui consommerait l'abonnement d'un tiers,
+ou qui collecterait des jetons OAuth d'utilisateurs, sortirait des conditions
+d'utilisation. VulnPipe ne demande et ne stocke aucun jeton : il constate
+seulement que Claude Code est installé sur la machine.
+
+### Ce que ça coûte réellement (mesuré, pas supposé)
+
+Sondage du 2026-08-19 (`@anthropic-ai/claude-agent-sdk` 0.3.235) : un appel
+trivial (8 jetons de sortie) transporte ~26 000 jetons de contexte — le harnais
+de Claude Code lui-même — même avec `allowedTools: []`. Ce volume est prélevé
+sur les limites de l'abonnement.
+
+**Conséquence pratique** : brancher ce fournisseur sur l'**arbitre** (un appel
+par scan, `CLAUDE.md` §2), pas sur les nodes de détection (un appel par route).
+
+### Le piège traité en code
+
+L'ordre de résolution des identifiants met `ANTHROPIC_API_KEY` **avant** la
+session Claude Code. Quelqu'un qui a exporté une clé pour un autre projet
+paierait à l'appel en croyant consommer son abonnement. Le champ `apiKeySource`
+du message `system/init` dit qui a gagné : il est lu, et l'écart est annoncé.
+`describeProviders()` refuse même d'annoncer ce fournisseur comme disponible
+quand une clé API est présente — il marcherait, mais il ne ferait pas ce que
+son nom promet.
+
+### Limites restantes
+- Le SDK ne propose pas de sortie structurée (pas d'équivalent
+  `output_config.format`) : le JSON est obtenu par consigne puis extrait du
+  texte. Toléré : bloc ``` autour, phrase avant/après. Au-delà, échec franc.
+- `total_cost_usd` renvoyé par le SDK est l'**équivalent au tarif API**, pas une
+  somme débitée. Il est remonté comme tel (`cost_usd: 0` + mention explicite) ;
+  l'afficher comme une dépense serait faux sur un abonnement.
+- Le surcoût de ~26 000 jetons par appel n'est pas réductible depuis l'API
+  publique du SDK. À re-mesurer si une option de harnais minimal apparaît.
+- Non testé sur un scan complet réel : seuls des sondages unitaires ont tourné.

@@ -573,6 +573,7 @@ const EN: Dictionary = {
       gemini: 'Google Gemini',
       ollama: 'Ollama (on your machine)',
       anthropic: 'Claude (Anthropic)',
+      'claude-subscription': 'My Claude subscription',
       openai: 'OpenAI',
       openrouter: 'OpenRouter',
       custom: 'Custom server',
@@ -581,6 +582,8 @@ const EN: Dictionary = {
       gemini: 'Fast and cheap. One key is enough.',
       ollama: 'Free and private: nothing leaves your computer.',
       anthropic: 'The most reliable for settling ambiguous cases.',
+      'claude-subscription':
+        'Uses the Claude Pro or Max plan you already pay for, through Claude Code on this machine. No API key, nothing extra billed per call.',
       openai: 'GPT models.',
       openrouter: 'Access to many models, including free ones.',
       custom: 'Any OpenAI-compatible server you host yourself.',
@@ -1129,6 +1132,7 @@ const FR: Dictionary = {
       gemini: 'Google Gemini',
       ollama: 'Ollama (sur ta machine)',
       anthropic: 'Claude (Anthropic)',
+      'claude-subscription': 'Mon abonnement Claude',
       openai: 'OpenAI',
       openrouter: 'OpenRouter',
       custom: 'Serveur personnalisé',
@@ -1137,6 +1141,8 @@ const FR: Dictionary = {
       gemini: 'Rapide et peu coûteux. Une clé suffit.',
       ollama: 'Gratuit et privé : rien ne sort de ton ordinateur.',
       anthropic: 'Le plus fiable pour trancher les cas ambigus.',
+      'claude-subscription':
+        "Utilise l'abonnement Claude Pro ou Max que tu paies déjà, via Claude Code installé sur cette machine. Aucune clé API, rien de facturé en plus à l'appel.",
       openai: 'Modèles GPT.',
       openrouter: 'Accès à de nombreux modèles, dont des gratuits.',
       custom: 'Tout serveur compatible OpenAI que tu héberges.',

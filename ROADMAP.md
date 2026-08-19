@@ -778,9 +778,13 @@ On annonce un problème ligne 3 à quelqu'un qui ne sait pas lire du code.
       davantage pour la confiance dans le verdict qu'un numéro de ligne.
 - [x] **3. « Ouvrir dans mon éditeur »** ✅ livré (2026-08-19)
       Lien `vscode://` / `cursor://` vers le fichier à la bonne ligne.
-- [ ] **4. Exporter et partager le rapport**
-      Copier en Markdown, télécharger. Aujourd'hui rien ne sort de l'écran :
-      impossible de garder une trace ou de montrer le rapport à quelqu'un.
+- [x] **4. Exporter et partager le rapport** ✅ livré (2026-08-19)
+      Copier en Markdown, télécharger. Rien ne sortait de l'écran : impossible
+      de garder une trace ou de montrer le rapport à quelqu'un.
+      Trois points tenus dans `web/src/lib/report-markdown.ts` : le langage
+      simple reste AVANT le jargon, les alertes écartées restent comptées, et
+      aucun chemin absolu ne fuit dans un document fait pour être partagé
+      (`source_root` est délibérément absent).
 
 ### Niveau 2 — passer du scan ponctuel au suivi
 
@@ -792,11 +796,19 @@ On annonce un problème ligne 3 à quelqu'un qui ne sait pas lire du code.
       **Prérequis** : la persistance (l'état des runs est en mémoire, cf.
       limitations de la Phase 6). **Décision à prendre avant de coder** : format
       de stockage. `CLAUDE.md` §5 dit « JSON structuré en V1 ».
-- [ ] **6. Statut par faille : corrigé / risque accepté / faux positif**
-      Avec justification obligatoire. Remède standard à la fatigue d'alerte.
-      **Piège à ne pas reproduire** : le taux de correction doit EXCLURE les
-      rejets, sinon on améliore son score en masquant des alertes. Un finding
-      écarté reste visible sur sa propre pile, jamais supprimé.
+- [x] **6. Statut par faille : corrigé / risque accepté / faux positif** ✅ livré (2026-08-19)
+      `web/src/lib/finding-status.ts`. Justification EXIGÉE pour écarter (risque
+      accepté, fausse alerte), pas pour « corrigé » — le scan suivant le vérifie
+      tout seul.
+      Le piège annoncé est tenu : `fixRate()` exclut les points écartés des DEUX
+      côtés de la fraction, écarter ne fait donc jamais monter le taux ; une
+      faille écartée est estompée, jamais retirée de l'écran.
+      Ajout non prévu : une faille marquée « corrigée » que le scan détecte
+      encore est signalée. L'outil regarde le code, la case coche une intention ;
+      quand les deux se contredisent, c'est la case qui a tort.
+      **Limite assumée** : les statuts vivent dans le navigateur
+      (`localStorage`), pas sur le serveur — ils ne suivent pas d'une machine à
+      l'autre. Ce choix évite d'engager la décision de stockage du point 5.
 - [ ] **7. Cache d'arbitrage** (déjà listé en limitation de la Phase 5)
       Techniquement une optimisation, vécue comme une fonctionnalité :
       relancer un scan sur du code inchangé devient instantané et gratuit.

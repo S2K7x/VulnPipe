@@ -164,6 +164,25 @@ export interface Dictionary {
     copyFailed: string;
     openInEditor: (editor: string) => string;
     openInEditorHelp: string;
+    copyReport: string;
+    downloadReport: string;
+    exportHelp: string;
+    reportCopied: string;
+  };
+  status: {
+    heading: string;
+    labels: Record<'open' | 'fixed' | 'accepted' | 'false_positive', string>;
+    noteLabel: (status: string) => string;
+    notePlaceholder: string;
+    noteRequired: string;
+    confirm: string;
+    cancel: string;
+    staleWarning: string;
+    summaryHeading: string;
+    fixRate: (percent: number) => string;
+    nothingToTreat: string;
+    dismissedCount: (n: number) => string;
+    excludedNote: string;
   };
   usage: {
     heading: string;
@@ -560,6 +579,33 @@ const EN: Dictionary = {
     copyFailed: 'Copy failed. Select the text and copy it by hand.',
     openInEditor: (editor) => `Open in ${editor}`,
     openInEditorHelp: 'Opens the file at the right line, if that editor is installed.',
+    copyReport: 'Copy the report',
+    downloadReport: 'Download',
+    exportHelp:
+      'To keep a record, attach it to a ticket, or show it to someone who can help you.',
+    reportCopied: 'Report copied',
+  },
+  status: {
+    heading: 'Status:',
+    labels: {
+      open: 'to handle',
+      fixed: 'fixed',
+      accepted: 'risk accepted',
+      false_positive: 'false alarm',
+    },
+    noteLabel: (status) => `Why "${status}"?`,
+    notePlaceholder: 'One sentence is enough. Your future self will thank you.',
+    noteRequired: 'Say why before setting this status: in six months nobody will remember.',
+    confirm: 'Save',
+    cancel: 'Cancel',
+    staleWarning:
+      'You marked this as fixed, but this scan still finds it. Either the fix does not cover this spot, or it has not been applied here.',
+    summaryHeading: 'Where you stand',
+    fixRate: (percent) => `${percent}% of what needed handling is fixed`,
+    nothingToTreat: 'Nothing left to handle.',
+    dismissedCount: (n) => `${n} point(s) set aside by you (still shown below)`,
+    excludedNote:
+      'Points you set aside count neither as fixed nor as remaining: setting a problem aside never improves this figure.',
   },
   usage: {
     heading: 'What this scan actually used',
@@ -1147,6 +1193,34 @@ const FR: Dictionary = {
     copyFailed: "La copie n'a pas fonctionné. Sélectionne le texte et copie-le à la main.",
     openInEditor: (editor) => `Ouvrir dans ${editor}`,
     openInEditorHelp: "Ouvre le fichier à la bonne ligne, si cet éditeur est installé.",
+    copyReport: 'Copier le rapport',
+    downloadReport: 'Télécharger',
+    exportHelp:
+      "Pour en garder une trace, le joindre à un ticket, ou le montrer à quelqu'un qui peut t'aider.",
+    reportCopied: 'Rapport copié',
+  },
+  status: {
+    heading: 'Statut :',
+    labels: {
+      open: 'à traiter',
+      fixed: 'corrigée',
+      accepted: 'risque accepté',
+      false_positive: 'fausse alerte',
+    },
+    noteLabel: (status) => `Pourquoi « ${status} » ?`,
+    notePlaceholder: 'Une phrase suffit. Le toi de dans six mois te remerciera.',
+    noteRequired:
+      'Dis pourquoi avant de poser ce statut : dans six mois, personne ne s’en souviendra.',
+    confirm: 'Enregistrer',
+    cancel: 'Annuler',
+    staleWarning:
+      'Tu as marqué ce point comme corrigé, mais ce scan le détecte encore. Soit la correction ne couvre pas cet endroit, soit elle n’y a pas été appliquée.',
+    summaryHeading: 'Où tu en es',
+    fixRate: (percent) => `${percent} % de ce qu’il y avait à traiter est corrigé`,
+    nothingToTreat: 'Plus rien à traiter.',
+    dismissedCount: (n) => `${n} point(s) écarté(s) par toi (toujours affichés plus bas)`,
+    excludedNote:
+      'Les points que tu écartes ne comptent ni comme corrigés ni comme restants : écarter un problème ne fait jamais monter ce chiffre.',
   },
   usage: {
     heading: 'Ce que ce scan a consommé',

@@ -185,9 +185,13 @@ export function selectRoutes(
 
   let changed: string[];
   try {
+    // `--relative` : sans lui, `git diff` renvoie des chemins relatifs à la
+    // racine du DÉPÔT, alors que `route.file` est relatif à la racine INDEXÉE.
+    // Sur un monorepo dont on n'indexe qu'un paquet, plus aucun chemin ne
+    // correspondait et le scan concluait « rien à revérifier ».
     const output = execFileSync(
       'git',
-      ['diff', '--name-only', `${request.commit_sha}^`, request.commit_sha],
+      ['diff', '--name-only', '--relative', `${request.commit_sha}^`, request.commit_sha],
       { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
     );
     changed = output.split('\n').map((line) => line.trim()).filter(Boolean);
@@ -202,13 +206,41 @@ export function selectRoutes(
   const changedSet = new Set(changed.map((file) => file.split(sep).join('/')));
   const rootRelative = (file: string): string => relative(root, file).split(sep).join('/');
 
+  // Fichiers modifiés que l'index rattache effectivement à une route. Ce qui
+  // reste en dehors est traité plus bas : on ne sait pas ce qu'il influence.
+  const attributed = new Set<string>();
+
   const selected = routes.filter((route) => {
-    // `route.file` est déjà relatif à la racine indexée.
-    if (changedSet.has(route.file)) return true;
-    // Un service modifié rend vulnérables les routes qui l'appellent : on
-    // inclut toute route dont un fichier lié a bougé.
-    return [...changedSet].some((file) => index.files.some((f) => rootRelative(f) === file && f.includes(route.controller)));
+    const dependencies = routeDependencies(index, route);
+    if (dependencies === null) return true; // route inconnue de l'index : dans le doute, on analyse
+    let touched = false;
+    for (const file of dependencies) {
+      if (changedSet.has(file)) {
+        attributed.add(file);
+        touched = true;
+      }
+    }
+    return touched;
   });
+
+  // Un fichier de code modifié que l'index ne relie à AUCUNE route : on ne
+  // sait pas ce qu'il influence. Répondre « rien à revérifier » serait une
+  // affirmation qu'on ne peut pas soutenir, et un faux négatif silencieux est
+  // le pire défaut possible ici. On analyse donc tout — et on le dit.
+  //
+  // Seuls les fichiers réellement indexés comptent : modifier un README ou un
+  // fichier de configuration ne doit pas coûter un scan complet.
+  const unattributed = index.files
+    .map(rootRelative)
+    .filter((file) => changedSet.has(file) && !attributed.has(file));
+
+  if (unattributed.length > 0) {
+    return {
+      routes,
+      effectiveMode: 'full_scan',
+      note: t.changeNotAttributable(unattributed.slice(0, 3), unattributed.length),
+    };
+  }
 
   return {
     routes: selected,
@@ -216,6 +248,55 @@ export function selectRoutes(
     note:
       selected.length === 0 ? t.nothingChanged : null,
   };
+}
+
+/**
+ * Fichiers dont le verdict d'une route dépend : le sien, plus ceux des classes
+ * qu'elle injecte, transitivement.
+ *
+ * POURQUOI. Le tri incrémental se faisait sur `fichier.includes(nomDuContrôleur)` :
+ * un chemin `src/order.controller.ts` ne contient jamais `OrderController`, la
+ * condition était donc toujours fausse et seul le fichier du contrôleur
+ * lui-même déclenchait une réanalyse. Conséquence : le commit qui retire le
+ * filtre `userId` d'un service — la façon la plus courante d'introduire une
+ * faille IDOR — ne faisait réanalyser aucune route, et l'utilisateur lisait
+ * « rien à revérifier » sur le commit qui venait de créer la faille.
+ *
+ * On suit ici la même piste que le resolver : la carte d'injection du
+ * constructeur (`injection_map`), déjà produite par l'indexeur. Aucun appel
+ * LLM, aucune lecture supplémentaire du disque — `CLAUDE.md` §1 : ce qu'un
+ * contrôle déterministe sait faire, il le fait.
+ *
+ * Deux choix prudents :
+ *   - une classe définie plusieurs fois (homonymes) fait entrer TOUS ses
+ *     fichiers : on préfère réanalyser en trop que rater le bon ;
+ *   - `null` signifie « route absente de l'index, dépendances inconnues » :
+ *     l'appelant doit alors analyser la route, jamais l'écarter.
+ */
+export function routeDependencies(index: RepoIndex, route: ListedRoute): Set<string> | null {
+  const match = index.endpoints.find(
+    (indexed) =>
+      indexed.endpoint.source.file === route.file &&
+      indexed.endpoint.route === route.route &&
+      indexed.endpoint.http_method.toUpperCase() === route.http_method.toUpperCase()
+  );
+  if (!match) return null;
+
+  const files = new Set<string>([route.file]);
+  const pending = Object.values(match.controller.injection_map);
+  const seen = new Set<string>();
+
+  while (pending.length > 0) {
+    const className = pending.pop()!;
+    if (seen.has(className)) continue;
+    seen.add(className);
+    for (const definition of index.classes.get(className) ?? []) {
+      files.add(definition.file);
+      pending.push(...Object.values(definition.injection_map));
+    }
+  }
+
+  return files;
 }
 
 /** Exécute un scan de bout en bout. */

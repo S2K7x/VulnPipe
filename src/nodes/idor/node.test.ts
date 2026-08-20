@@ -173,6 +173,71 @@ describe('Scanner déterministe (sans LLM)', () => {
     expect(report.decisive_score).toBeNull();
   });
 
+  it("ne se laisse pas berner par une ligne de log SANS RAPPORT qui suit une requête non filtrée", () => {
+    // Symétrique du piège "paramètre reçu mais jamais branché" (ci-dessus),
+    // côté fenêtre AVANT plutôt qu'APRÈS. La fenêtre regarde volontairement
+    // vers l'avant (voir le commentaire d'extractCallWindow) pour ne plus se
+    // faire piéger par ce qui précède l'appel — mais une fenêtre FIXE de
+    // lignes après l'appel a le même défaut dans l'autre sens : un log qui
+    // mentionne l'utilisateur juste après une requête base NON filtrée fait
+    // matcher "userid" dans la fenêtre, sans aucun rapport avec les arguments
+    // réels de l'appel. `this.db.orders.findOne({ id })` ne filtre rien ;
+    // `req.user.id` n'apparaît que dans un log indépendant deux lignes plus
+    // bas. C'est la même famille de faux négatif silencieux (decisive_score
+    // "sain" sans jamais consulter le LLM) que les bugs des nuits précédentes,
+    // cette fois déclenché par la proximité plutôt que par les arguments réels
+    // de l'appel.
+    const bundle = resolveContext(index, { route: '/orders/:id', httpMethod: 'GET' });
+    const trapCandidateSnapshot = [
+      'async retrieve(id: string) {',
+      '  const order = this.db.orders.findOne({ id });',
+      "  this.logger.log('accessed by ' + req.user.id);",
+      '  return order;',
+      '}',
+    ].join('\n');
+    const piege = {
+      ...bundle,
+      resolved_calls: [
+        {
+          call: 'retrieve',
+          injected_type: 'OrderService',
+          receiver: 'orderService',
+          line: 9,
+          resolution_status: 'resolved' as const,
+          reason: null,
+          candidates: [
+            {
+              class_name: 'OrderService',
+              file: 'trap.service.ts',
+              method: 'retrieve',
+              code_snapshot: trapCandidateSnapshot,
+              start_line: 9,
+              end_line: 13,
+            },
+          ],
+          resolved_calls: [
+            {
+              call: 'findOne',
+              injected_type: null,
+              receiver: 'this.db.orders',
+              line: 10,
+              resolution_status: 'not_found' as const,
+              reason: 'missing_context' as const,
+              candidates: [],
+              resolved_calls: [],
+              already_expanded: false,
+            },
+          ],
+          already_expanded: false,
+        },
+      ],
+    };
+    const report = scanForIdor(piege);
+    expect(report.has_unscoped_data_access).toBe(true);
+    expect(report.has_user_scoped_data_access).toBe(false);
+    expect(report.decisive_score).toBeNull();
+  });
+
   it("ne rate pas un appel ORM au nom composé (findOneBy) absent de la liste codée en dur", () => {
     // Encore plus sournois : la méthode qui lit la ressource porte un nom de
     // convention ORM réel (TypeORM `findOneBy`, Mongoose `findByIdAndUpdate`...)

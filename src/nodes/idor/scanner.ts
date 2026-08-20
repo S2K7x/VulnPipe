@@ -147,13 +147,6 @@ function collectDataAccessSites(
 }
 
 /**
- * Nombre de lignes APRÈS l'appel incluses dans la fenêtre de vérification du
- * filtre — assez pour couvrir un littéral d'objet multi-lignes
- * (`findOne({\n  id,\n  userId,\n})`), pas plus.
- */
-const SCOPE_WINDOW_LINES = 4;
-
-/**
  * Bug corrigé (voir NIGHTLY_LOG.md) : `mentionsUserScope` cherchait le champ
  * d'identité dans TOUT le corps de la méthode englobante, pas seulement près
  * de l'appel. Un paramètre `userId` reçu mais jamais branché sur le filtre
@@ -161,20 +154,68 @@ const SCOPE_WINDOW_LINES = 4;
  * protégé — un faux négatif qui court-circuite même le LLM, puisque c'est le
  * chemin de décision déterministe.
  *
+ * Deuxième bug corrigé (voir NIGHTLY_LOG.md, nuit suivante) : une fenêtre
+ * FIXE de quelques lignes après l'appel avait le même défaut dans l'autre
+ * sens. `this.db.orders.findOne({ id })` suivi deux lignes plus bas d'un
+ * `logger.log('... ' + req.user.id)` SANS RAPPORT avec la requête faisait
+ * matcher "userid" dans la fenêtre et classait la route "sain" — alors que
+ * `findOne` ne filtre rien du tout. Une fenêtre en nombre de lignes ne peut
+ * pas distinguer "dans les arguments de l'appel" de "dans l'instruction
+ * suivante" : ce n'est pas une question de distance, c'est une question de
+ * savoir CE QUE l'appel reçoit réellement.
+ *
+ * Remplacé par un appariement de parenthèses : on part de l'occurrence du
+ * nom de méthode sur la ligne de l'appel et on capture jusqu'à la
+ * parenthèse fermante correspondante, quel que soit le nombre de lignes que
+ * ça couvre — un littéral d'objet multi-lignes (`findOne({\n  id,\n  userId,\n})`)
+ * reste entièrement capturé, mais plus rien APRÈS la fermeture de l'appel.
+ *
  * La fenêtre ne regarde volontairement JAMAIS en arrière : un paramètre de
- * signature ou un log précédent l'appel ne doivent plus compter. Un
+ * signature ou un log précédent l'appel ne doivent pas compter. Un
  * contrôle d'accès écrit en amont (`if (!owns) throw`) échappe donc à cette
  * détection et fait basculer la route en zone grise plutôt qu'en verdict
  * "sain" — direction sûre : dans le doute, on demande, on ne conclut jamais
  * à tort qu'une route est protégée.
  */
-function extractCallWindow(enclosingCode: string, enclosingStartLine: number, callLine: number): string {
+function extractCallArguments(
+  enclosingCode: string,
+  enclosingStartLine: number,
+  callLine: number,
+  methodName: string
+): string {
   const lines = enclosingCode.split('\n');
   const relativeIndex = callLine - enclosingStartLine;
   // Décalage incohérent (ne devrait pas arriver en usage réel) : repli
   // conservateur, jamais vers le texte complet qui a causé le bug.
   if (relativeIndex < 0 || relativeIndex >= lines.length) return '';
-  return lines.slice(relativeIndex, relativeIndex + 1 + SCOPE_WINDOW_LINES).join('\n');
+  const fromCallLine = lines.slice(relativeIndex).join('\n');
+
+  const nameIndex = fromCallLine.indexOf(methodName);
+  if (nameIndex === -1) return '';
+  const openParen = fromCallLine.indexOf('(', nameIndex);
+  if (openParen === -1) return '';
+
+  let depth = 0;
+  let stringDelim: string | null = null;
+  for (let i = openParen; i < fromCallLine.length; i++) {
+    const ch = fromCallLine[i];
+    if (stringDelim) {
+      if (ch === stringDelim && fromCallLine[i - 1] !== '\\') stringDelim = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      stringDelim = ch;
+      continue;
+    }
+    if (ch === '(') depth++;
+    else if (ch === ')') {
+      depth--;
+      if (depth === 0) return fromCallLine.slice(openParen, i + 1);
+    }
+  }
+  // Parenthèse jamais refermée dans le texte disponible (troncature de
+  // contexte) : on renvoie ce qu'on a, jamais du texte situé après l'appel.
+  return fromCallLine.slice(openParen);
 }
 
 /**
@@ -223,11 +264,17 @@ export function scanForIdor(
   for (const entry of sites) {
     if (!isDataAccess(entry.call.call)) continue;
 
-    // Le filtre se juge sur les lignes qui ÉCRIVENT la requête, pas sur toute
-    // la méthode englobante — sinon un `req.user.id` de log, ou un paramètre
-    // reçu mais jamais utilisé, masquerait la vulnérabilité (voir NIGHTLY_LOG.md).
-    const surroundings = extractCallWindow(entry.enclosingCode, entry.enclosingStartLine, entry.call.line);
-    if (mentionsUserScope(surroundings)) {
+    // Le filtre se juge sur les ARGUMENTS de l'appel lui-même, pas sur une
+    // fenêtre de lignes voisines — sinon un `req.user.id` de log après
+    // l'appel, un paramètre reçu mais jamais utilisé avant, ou tout autre
+    // texte à proximité masquerait la vulnérabilité (voir NIGHTLY_LOG.md).
+    const callArguments = extractCallArguments(
+      entry.enclosingCode,
+      entry.enclosingStartLine,
+      entry.call.line,
+      entry.call.call
+    );
+    if (mentionsUserScope(callArguments)) {
       scoped = true;
       findings.push({
         kind: 'scoped_data_access',

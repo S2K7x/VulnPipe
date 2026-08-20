@@ -209,9 +209,10 @@ Cocher au fur et à mesure. Chaque phase correspond à un fichier
         englobante plutôt que près de l'appel — un paramètre `userId` reçu
         mais jamais branché sur le filtre suffisait à déclencher le
         `decisive_score` "sain" et à court-circuiter jusqu'au LLM. La
-        vérification est maintenant bornée à une fenêtre de lignes qui suit
-        l'appel, jamais en arrière. Reste non couvert par construction (choix
-        assumé, direction sûre) : un contrôle d'accès écrit en amont de
+        vérification est maintenant bornée à ce qui suit l'appel, jamais en
+        arrière (voir aussi le correctif du 2026-08-20 ci-dessous pour la
+        forme exacte de cette bornage). Reste non couvert par construction
+        (choix assumé, direction sûre) : un contrôle d'accès écrit en amont de
         l'appel (`if (!owns(id, userId)) throw ...`) n'est plus reconnu comme
         une protection par le scanner déterministe — la route bascule en zone
         grise (coût LLM en plus) au lieu d'être tranchée à coût nul. Le suivi
@@ -230,6 +231,26 @@ Cocher au fur et à mesure. Chaque phase correspond à un fichier
         heuristique par construction (un verbe métier qui ne commence par
         aucun de ces préfixes reste invisible) ; le suivi de flux de données
         reste le vrai correctif de fond.
+        **[troisième faux négatif de la même famille corrigé la nuit du
+        2026-08-20, voir NIGHTLY_LOG.md]** La fenêtre de vérification du
+        filtre (`extractCallWindow`) prenait un nombre FIXE de lignes après
+        l'appel (4), pour couvrir un littéral d'objet multi-lignes
+        (`findOne({\n  id,\n  userId,\n})`). Mais une fenêtre en nombre de
+        lignes ne distingue pas "dans les arguments de l'appel" de "dans
+        l'instruction suivante" : `this.db.orders.findOne({ id })` (aucun
+        filtre) suivi deux lignes plus bas d'un
+        `logger.log('... ' + req.user.id)` SANS RAPPORT avec la requête
+        faisait matcher "userid" dans la fenêtre et déclenchait le
+        `decisive_score` "sain" — alors que la route est réellement
+        vulnérable. Remplacé par `extractCallArguments`, qui part du nom de
+        méthode sur la ligne de l'appel et capture par appariement de
+        parenthèses jusqu'à la fermeture correspondante, quel que soit le
+        nombre de lignes : le littéral multi-lignes reste couvert, plus rien
+        après la fermeture de l'appel ne compte. `SCOPE_WINDOW_LINES` a
+        disparu, il n'y a plus de distance arbitraire à régler. Reste
+        heuristique par construction (recherche textuelle du nom de méthode,
+        pas de résolution AST des arguments réels) ; le suivi de flux de
+        données reste le vrai correctif de fond.
       - Un seul type de vuln (IDOR). La structure `prompt`/`scanner`/`node`
         est copiable telle quelle ; seuls la grille et les directives changent.
       - Pas encore de parcours automatique de toutes les routes ni de

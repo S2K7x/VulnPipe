@@ -1,5 +1,77 @@
 # Journal des nuits
 
+## 2026-08-20
+
+**Sujet** : troisième variante du même faux négatif silencieux dans le
+scanner IDOR déterministe — cette fois la fenêtre de vérification du filtre
+regardait trop loin APRÈS l'appel, au lieu de trop loin AVANT (nuit du
+2026-08-18) ou du mauvais nom de méthode (nuit du 2026-08-19).
+
+**Résultat** : PR ouverte (branche `claude/exciting-volta-151mvl`).
+
+**Ce que j'ai appris** :
+- `extractCallWindow` (`src/nodes/idor/scanner.ts`) prenait les 4 lignes qui
+  suivent la ligne de l'appel, pour couvrir un littéral d'objet multi-lignes
+  (`findOne({\n  id,\n  userId,\n})`). Mais une fenêtre en nombre de lignes ne
+  sait pas distinguer "dans les arguments de CET appel" de "dans
+  l'instruction suivante, sans rapport". `this.db.orders.findOne({ id })`
+  (aucun filtre) suivi deux lignes plus bas d'un
+  `logger.log('accessed by ' + req.user.id)` — un log d'accès banal, sans
+  aucun lien avec la requête — faisait matcher "userid" dans la fenêtre et
+  déclenchait `decisive_score: 0.1` ("sain"), sur une route réellement
+  vulnérable. Exactement le défaut que ce garde-fou est censé éviter :
+  `decisive_score` court-circuite le LLM, donc personne — humain ou modèle —
+  ne revoit jamais cette route.
+- Reproduit par un bundle de contexte synthétique (même patron que les tests
+  précédents : un `resolved_calls` construit à la main plutôt qu'un vrai
+  fichier indexé), avec un seul site d'accès isolé pour être sûr que rien
+  d'autre ne rattrape le faux négatif. Test écrit d'abord, vérifié rouge
+  (`has_unscoped_data_access: false`, `decisive_score: 0.1`) avant tout
+  correctif.
+- Corrigé en remplaçant la fenêtre à distance fixe par un appariement de
+  parenthèses (`extractCallArguments`) : on part du nom de méthode sur la
+  ligne de l'appel, on trouve la parenthèse ouvrante, puis on capture
+  jusqu'à sa fermeture correspondante (en ignorant les parenthèses à
+  l'intérieur de chaînes/template literals). Ça couvre toujours un littéral
+  multi-lignes, mais plus rien après la fermeture de l'appel ne compte —
+  la question n'était pas "combien de lignes", c'était "qu'est-ce que
+  l'appel reçoit réellement". `SCOPE_WINDOW_LINES` a disparu : il n'y a
+  plus de distance arbitraire à régler dans un sens ou dans l'autre.
+- Si le nom de méthode n'apparaît pas dans le texte disponible (contexte
+  tronqué, forme inattendue), la fonction renvoie une chaîne vide — direction
+  sûre déjà retenue les nuits précédentes : dans le doute, la requête est vue
+  comme non filtrée, jamais l'inverse.
+
+**À ne pas refaire** :
+- Ne pas revenir à une fenêtre en nombre de lignes "pour plus de simplicité"
+  sans rouvrir ce raisonnement, ni dans un sens ni dans l'autre : c'est
+  précisément ce format qui a produit trois faux négatifs de suite (avant,
+  puis nom de méthode, puis après).
+- Le vrai correctif de fond reste, comme noté les nuits précédentes, un
+  suivi de flux de données plutôt qu'un pattern-matching textuel sur les
+  arguments — hors de portée d'un changement d'une nuit. L'appariement de
+  parenthèses réduit la classe de faux négatifs "texte à proximité sans
+  rapport", il ne l'élimine pas : un identifiant utilisateur passé en
+  argument mais jamais réellement branché sur le filtre côté ORM (rare, mais
+  possible avec un objet construit ailleurs et passé par variable) resterait
+  invisible à ce stade.
+
+**Vérifications exécutées** :
+```
+npm run typecheck   # 0 erreur
+npm test             # 376/376 verts (375 avant + 1 nouveau test, aucun ignoré/affaibli)
+npm run build         # web/dist généré, 314 kB / 98 kB gzip
+```
+Aucun script consommant du quota LLM n'a été lancé (bench/measure/report/e2e) :
+le changement est entièrement couvert par un test hors-ligne qui construit son
+propre bundle de contexte et n'appelle aucun modèle.
+
+**Note sur l'environnement de la nuit** : au démarrage, `origin/main` en
+cache local ne pointait pas encore sur les PR déjà fusionnées (#4 à #10) —
+un `git fetch origin main` explicite était nécessaire avant de partir d'une
+base à jour. Pas un bug du dépôt, juste une trace pour la nuit suivante si le
+même flottement de ref apparaît.
+
 ## 2026-08-19
 
 **Sujet** : le scanner IDOR déterministe pouvait encore classer une route

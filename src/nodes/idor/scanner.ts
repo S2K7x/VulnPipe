@@ -231,10 +231,49 @@ function stripComments(code: string): string {
   return code.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
 }
 
-/** Normalise agressivement : `userId`, `user_id`, `req.user.id` doivent matcher. */
+const USER_SCOPE_FIELDS_NORMALIZED = new Set(USER_SCOPE_FIELDS.map((field) => field.replace(/_/g, '')));
+
+/** Chaîne d'identifiants séparés par des points : `userId`, `req.user.id`... */
+const IDENTIFIER_CHAIN = /[A-Za-z_][A-Za-z0-9_.]*/g;
+
+/**
+ * `userId`, `user_id`, `req.user.id` doivent matcher — mais `userIdFilter`
+ * ne doit PAS matcher.
+ *
+ * Bug corrigé (voir NIGHTLY_LOG.md) : la version précédente normalisait tout
+ * le texte en un seul bloc sans ponctuation (`{ id, userIdFilter }` ->
+ * `iduseridfilter`) puis cherchait "userid" en SOUS-CHAÎNE. N'importe quel
+ * identifiant qui CONTIENT "userid" matchait donc — y compris un nom de
+ * variable comme `userIdFilter`, construit ailleurs par une fonction séparée
+ * (`buildFilter(id)`) qui ne filtre peut-être sur rien du tout. Même famille
+ * de faux négatif silencieux que les trois bugs précédents de ce fichier :
+ * `decisive_score` court-circuite le LLM sur la seule foi d'un nom de
+ * variable qui RESSEMBLE au bon champ.
+ *
+ * Remplacé par une comparaison par identifiant ENTIER : on découpe le texte
+ * en chaînes `a.b.c` (points compris, pour ne pas casser `req.user.id`), et
+ * pour chacune on ne retient que le DERNIER segment (`userId` dans
+ * `filter.userId`) ou les DEUX DERNIERS collés (`user`+`id` = `userid` dans
+ * `req.user.id`, où l'identité est répartie sur deux niveaux d'accès). Un
+ * identifiant plus long qui contient la sous-chaîne sans lui être ÉGAL
+ * (`userIdFilter`, `getUserIdSomething`) ne matche plus jamais.
+ */
 function mentionsUserScope(code: string): boolean {
-  const normalized = stripComments(code).toLowerCase().replace(/[^a-z0-9]/g, '');
-  return USER_SCOPE_FIELDS.some((field) => normalized.includes(field.replace(/_/g, '')));
+  const stripped = stripComments(code);
+  const chains = stripped.match(IDENTIFIER_CHAIN) ?? [];
+  for (const chain of chains) {
+    const segments = chain.split('.').filter((s) => s.length > 0);
+    if (segments.length === 0) continue;
+    const last = segments[segments.length - 1]!.toLowerCase().replace(/_/g, '');
+    if (USER_SCOPE_FIELDS_NORMALIZED.has(last)) return true;
+    if (segments.length >= 2) {
+      const lastTwo = (segments[segments.length - 2]! + segments[segments.length - 1]!)
+        .toLowerCase()
+        .replace(/_/g, '');
+      if (USER_SCOPE_FIELDS_NORMALIZED.has(lastTwo)) return true;
+    }
+  }
+  return false;
 }
 
 function isDataAccess(methodName: string): boolean {

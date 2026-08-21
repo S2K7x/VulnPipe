@@ -308,6 +308,68 @@ describe('Scanner déterministe (sans LLM)', () => {
     expect(report.has_unscoped_data_access).toBe(true);
     expect(report.decisive_score).toBeNull();
   });
+
+  it("ne se laisse pas berner par un nom de variable qui CONTIENT « userId » sans être ce champ", () => {
+    // Variante prédite par le ROADMAP ("un identifiant utilisateur passé en
+    // argument mais jamais réellement branché sur le filtre... resterait
+    // invisible") : `mentionsUserScope` normalisait le texte en un seul bloc
+    // sans ponctuation puis cherchait "userid" en SOUS-CHAÎNE. Un nom de
+    // variable qui contient la sous-chaîne sans être le champ lui-même —
+    // `userIdFilter`, construit ailleurs et qui pourrait très bien ne
+    // filtrer sur rien — suffit à déclencher le même match que le vrai champ
+    // `userId`. Ce n'est pas un cas d'école : c'est exactement la forme que
+    // prend un objet de filtre construit par une fonction séparée plutôt
+    // qu'un littéral inline, très courante dès qu'un vibe coder factorise
+    // son code.
+    const bundle = resolveContext(index, { route: '/orders/:id', httpMethod: 'GET' });
+    const trapCandidateSnapshot = [
+      'async retrieve(id: string) {',
+      '  const userIdFilter = buildFilter(id); // ne filtre PAS réellement sur userId',
+      '  return this.db.orders.findOne(userIdFilter);',
+      '}',
+    ].join('\n');
+    const piege = {
+      ...bundle,
+      resolved_calls: [
+        {
+          call: 'retrieve',
+          injected_type: 'OrderService',
+          receiver: 'orderService',
+          line: 9,
+          resolution_status: 'resolved' as const,
+          reason: null,
+          candidates: [
+            {
+              class_name: 'OrderService',
+              file: 'trap.service.ts',
+              method: 'retrieve',
+              code_snapshot: trapCandidateSnapshot,
+              start_line: 9,
+              end_line: 12,
+            },
+          ],
+          resolved_calls: [
+            {
+              call: 'findOne',
+              injected_type: null,
+              receiver: 'this.db.orders',
+              line: 11,
+              resolution_status: 'not_found' as const,
+              reason: 'missing_context' as const,
+              candidates: [],
+              resolved_calls: [],
+              already_expanded: false,
+            },
+          ],
+          already_expanded: false,
+        },
+      ],
+    };
+    const report = scanForIdor(piege);
+    expect(report.has_unscoped_data_access).toBe(true);
+    expect(report.has_user_scoped_data_access).toBe(false);
+    expect(report.decisive_score).toBeNull();
+  });
 });
 
 describe('Node IDOR — les 3 cas imposés par PHASE_3 (logique, LLM simulé)', () => {

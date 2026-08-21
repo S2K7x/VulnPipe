@@ -1,5 +1,83 @@
 # Journal des nuits
 
+## 2026-08-21
+
+**Sujet** : quatrième variante du même faux négatif silencieux dans le
+scanner IDOR déterministe — cette fois `mentionsUserScope` matchait "userid"
+en SOUS-CHAÎNE d'un identifiant plus long (`userIdFilter`) au lieu de
+comparer l'identifiant entier.
+
+**Résultat** : PR ouverte (branche `claude/exciting-volta-je2wwg`).
+
+**Ce que j'ai appris** :
+- Le correctif de la nuit du 2026-08-20 (`extractCallArguments`) a bien réglé
+  la question de PORTÉE : chercher le filtre utilisateur uniquement dans les
+  arguments réels de l'appel, jamais avant ni après. Mais une fois ce texte
+  isolé, `mentionsUserScope` le normalisait encore en un seul bloc de
+  caractères sans ponctuation (`{ id, userIdFilter }` -> `iduseridfilter`)
+  puis cherchait `"userid"` en SOUS-CHAÎNE. N'importe quel identifiant qui
+  CONTIENT cette sous-chaîne matchait donc, y compris un nom de variable
+  comme `userIdFilter` construit ailleurs par une fonction séparée
+  (`buildFilter(id)`) qui ne filtre peut-être sur rien du tout. Le
+  `ROADMAP.md` prédisait littéralement ce cas dans ses limitations restantes
+  ("un identifiant utilisateur passé en argument mais jamais réellement
+  branché sur le filtre... resterait invisible") sans qu'un test ne
+  l'exerce — je l'ai pris comme piste de la nuit plutôt que d'en inventer une.
+- Reproduit par le même patron que les nuits précédentes : un
+  `resolved_calls` construit à la main avec un seul site d'accès isolé
+  (`this.db.orders.findOne(userIdFilter)`, où `userIdFilter` vient d'un appel
+  à `buildFilter(id)` non résolu). Test écrit d'abord, vérifié rouge
+  (`has_unscoped_data_access: false`, `decisive_score: 0.1`) avant tout
+  correctif.
+- Corrigé en remplaçant la comparaison par sous-chaîne par une comparaison
+  par IDENTIFIANT ENTIER : le texte des arguments est découpé en chaînes
+  `a.b.c` (points compris, pour ne pas casser `req.user.id`), et pour chacune
+  seul le DERNIER segment (`userId` dans `filter.userId`) ou les DEUX
+  DERNIERS segments collés (`user`+`id` dans `req.user.id`, où l'identité est
+  répartie sur deux niveaux d'accès) sont comparés — jamais une sous-chaîne
+  d'un identifiant plus long. Vérifié que ça ne casse aucun des 4 correctifs
+  précédents de ce fichier : `req.user.id` matche toujours (via les deux
+  derniers segments), `{ id, userId }` matche toujours (dernier segment),
+  `userIdFilter` ne matche plus.
+
+**À ne pas refaire** :
+- Ne pas revenir à une normalisation "tout en un bloc + sous-chaîne" pour
+  simplifier le code : c'est précisément ce format qui a produit ce
+  quatrième faux négatif de la même famille (avant l'appel, nom de méthode,
+  après l'appel, et maintenant sous-chaîne d'identifiant).
+- Le vrai correctif de fond reste, comme noté les nuits précédentes, un
+  suivi de flux de données réel — savoir si `userIdFilter` a été construit à
+  partir du champ d'identité, pas seulement s'il porte un nom qui y
+  ressemble. Hors de portée d'un changement d'une nuit : ça demanderait de
+  résoudre le corps de `buildFilter` et de suivre ce qu'il fait de son
+  argument, ce que ni l'indexeur ni le resolver ne font aujourd'hui.
+- Je n'ai PAS cherché d'autres variantes de ce bug par lecture manuelle du
+  reste du scanner : le temps restant a été mis dans la vérification que ce
+  correctif précis ne régresse aucun des tests existants plutôt que dans une
+  chasse plus large sans piste concrète.
+
+**Vérifications exécutées** :
+```
+npm run typecheck   # 0 erreur
+npm test             # 377/377 verts (376 avant + 1 nouveau test, aucun ignoré/affaibli)
+npm run build         # web/dist généré, 314 kB / 98 kB gzip
+```
+Aucun script consommant du quota LLM n'a été lancé (bench/measure/report/e2e) :
+le changement est entièrement couvert par un test hors-ligne qui construit son
+propre bundle de contexte et n'appelle aucun modèle.
+
+**Note sur l'environnement de la nuit** : `node_modules` n'existait pas au
+démarrage du conteneur (`npm run typecheck` échouait sur `Cannot find type
+definition file for 'node'`) — un `npm ci` explicite était nécessaire avant
+toute vérification. Séparément : `origin/main` (2 commits : "Initial commit"
++ "refactor: move phase docs") est très en retard sur cette branche, qui
+contient 25 commits d'historique cumulé (dont plusieurs PR de nuits
+précédentes fermées sans fusion sur GitHub, #1 à #11, alors que leur contenu
+est déjà présent ici). `origin/main` reste un ancêtre direct de cette branche
+(`git merge-base` le confirme) : pas de conflit, juste un écart de process
+antérieur à cette nuit, non résolu ici — hors du périmètre d'un correctif
+d'une nuit, et je n'ai pas de PR ouverte pour cette branche à comparer.
+
 ## 2026-08-20
 
 **Sujet** : troisième variante du même faux négatif silencieux dans le

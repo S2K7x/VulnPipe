@@ -251,6 +251,25 @@ Cocher au fur et à mesure. Chaque phase correspond à un fichier
         heuristique par construction (recherche textuelle du nom de méthode,
         pas de résolution AST des arguments réels) ; le suivi de flux de
         données reste le vrai correctif de fond.
+        **[quatrième faux négatif de la même famille corrigé la nuit du
+        2026-08-21, voir NIGHTLY_LOG.md]** `mentionsUserScope` avait bien
+        borné SA RECHERCHE aux arguments réels de l'appel (correctif
+        ci-dessus), mais continuait à les normaliser en un seul bloc de
+        caractères sans ponctuation puis à chercher "userid" en SOUS-CHAÎNE.
+        Un identifiant qui CONTIENT la sous-chaîne sans être ce champ —
+        `userIdFilter`, construit ailleurs par une fonction séparée qui ne
+        filtre peut-être sur rien — suffisait à déclencher `decisive_score:
+        0.1` ("sain", coût nul), exactement le scénario que ce fichier
+        prédisait déjà ("un identifiant utilisateur passé en argument mais
+        jamais réellement branché sur le filtre... resterait invisible").
+        Remplacé par une comparaison par identifiant ENTIER (dernier segment,
+        ou deux derniers segments collés pour couvrir `req.user.id` où
+        l'identité est répartie sur deux niveaux d'accès) au lieu d'une
+        sous-chaîne dans un bloc de texte aplati. Reste heuristique par
+        construction : le suivi de flux de données réel — savoir si la
+        variable passée en argument a RÉELLEMENT été construite à partir du
+        champ d'identité, pas seulement nommée comme si — reste hors de
+        portée d'un changement d'une nuit.
       - Un seul type de vuln (IDOR). La structure `prompt`/`scanner`/`node`
         est copiable telle quelle ; seuls la grille et les directives changent.
       - Pas encore de parcours automatique de toutes les routes ni de

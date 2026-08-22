@@ -183,7 +183,7 @@ function extractCallArguments(
   callLine: number,
   methodName: string
 ): string {
-  const lines = enclosingCode.split('\n');
+  const lines = stripCommentsPreserveLines(enclosingCode).split('\n');
   const relativeIndex = callLine - enclosingStartLine;
   // Décalage incohérent (ne devrait pas arriver en usage réel) : repli
   // conservateur, jamais vers le texte complet qui a causé le bug.
@@ -229,6 +229,33 @@ function extractCallArguments(
  */
 function stripComments(code: string): string {
   return code.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
+}
+
+/**
+ * Comme `stripComments`, mais préserve la longueur et les sauts de ligne
+ * (chaque caractère de commentaire devient un espace, `\n` reste `\n`).
+ *
+ * Bug corrigé (voir NIGHTLY_LOG.md) : `extractCallArguments` cherchait le nom
+ * de méthode et appariait les parenthèses sur `enclosingCode` BRUT — un
+ * commentaire `/* ... *\/` qui précède l'appel réel sur la MÊME ligne et
+ * mentionne ce nom de méthode faisait matcher le nom DANS le commentaire, puis
+ * capturer les arguments DU COMMENTAIRE au lieu de ceux de l'appel réel. Un
+ * commentaire mentionnant "userId" (ex. une ancienne version filtrée, très
+ * courant en relecture ou en code généré par IA) suffisait alors à déclencher
+ * le verdict décisif "sain" sur du texte qui n'est même pas du code exécuté —
+ * même famille de faux négatif silencieux que les quatre bugs précédents de
+ * ce fichier.
+ *
+ * `stripComments` (ci-dessus) ne convient pas ICI : il collabore un
+ * commentaire multi-lignes en un seul espace, ce qui décale tous les numéros
+ * de ligne utilisés par `enclosingStartLine` / `callLine` pour retrouver la
+ * bonne ligne dans `enclosingCode.split('\n')`. Remplacer caractère par
+ * caractère (sauf `\n`) garde la structure de lignes intacte.
+ */
+function stripCommentsPreserveLines(code: string): string {
+  return code
+    .replace(/\/\*[\s\S]*?\*\//g, (match) => match.replace(/[^\n]/g, ' '))
+    .replace(/\/\/[^\n]*/g, (match) => ' '.repeat(match.length));
 }
 
 const USER_SCOPE_FIELDS_NORMALIZED = new Set(USER_SCOPE_FIELDS.map((field) => field.replace(/_/g, '')));

@@ -1,5 +1,77 @@
 # Journal des nuits
 
+## 2026-08-22
+
+**Sujet** : cinquième variante du même faux négatif silencieux dans le
+scanner IDOR déterministe — cette fois `extractCallArguments` capturait les
+arguments d'un COMMENTAIRE mentionnant l'appel, au lieu de l'appel réel.
+
+**Résultat** : PR ouverte (branche `claude/exciting-volta-ro8ohl`).
+
+**Ce que j'ai appris** :
+- Les quatre correctifs précédents (2026-08-18 à 2026-08-21) ont progressivement
+  resserré la question "où chercher le filtre utilisateur" (fenêtre avant vs
+  après l'appel, nom de méthode exact vs préfixe, sous-chaîne vs identifiant
+  entier) — mais tous opéraient sur `enclosingCode` sans jamais en retirer les
+  commentaires AVANT de localiser l'appel lui-même. `stripComments` existe
+  bien dans ce fichier, mais n'est appliqué que dans `mentionsUserScope`, sur
+  le texte DÉJÀ extrait par `extractCallArguments` — trop tard : si un
+  commentaire `/* ... */` précède l'appel réel sur la MÊME ligne et mentionne
+  le nom de la méthode suivi de parenthèses (une trace d'ancienne version
+  filtrée, une explication laissée par relecture, ou un commentaire généré
+  par un assistant IA décrivant "avant/après"), `extractCallArguments` trouve
+  la première occurrence du nom de méthode DANS le commentaire et capture ses
+  parenthèses — le texte du commentaire, pas celui de l'appel.
+- Reproduit avec le même patron que les quatre nuits précédentes : un
+  `resolved_calls` construit à la main, un seul site d'accès isolé
+  (`return /* old: findOne({ id, userId }) */ this.db.orders.findOne({ id });`,
+  où l'appel réel ne filtre rien). Test écrit d'abord, vérifié rouge
+  (`has_unscoped_data_access: false`, `has_user_scoped_data_access: true`,
+  `decisive_score: 0.1`) avant tout correctif — confirmé aussi par un script
+  jetable (`npx tsx`) reproduisant le bundle avant d'écrire le test définitif.
+- Corrigé en ajoutant `stripCommentsPreserveLines` : comme `stripComments`,
+  mais remplace chaque caractère de commentaire par un espace au lieu de
+  collabler tout le commentaire en un seul espace — ça préserve la longueur
+  ET les sauts de ligne. `extractCallArguments` l'applique à `enclosingCode`
+  AVANT de découper en lignes et de chercher le nom de méthode, au lieu
+  d'opérer sur le texte brut. Le `stripComments` existant (collabant les
+  sauts de ligne) aurait décalé `enclosingStartLine`/`callLine` et cassé
+  l'indexation par ligne — d'où une fonction séparée plutôt qu'une
+  réutilisation directe.
+- Vérifié que les 5 correctifs précédents de cette famille restent verts
+  ensemble : 378/378, aucun n'a régressé.
+
+**À ne pas refaire** :
+- Ne pas fusionner `stripComments` et `stripCommentsPreserveLines` "pour
+  éviter la duplication" : le premier est utilisé là où seule la présence
+  d'un motif compte (peu importe les lignes), le second là où les numéros de
+  ligne doivent rester exacts. Les confondre réintroduirait soit ce bug, soit
+  le risque de décalage de ligne que la fonction séparée évite justement.
+- Je n'ai pas cherché de sixième variante par lecture manuelle exhaustive du
+  reste du scanner : comme les nuits précédentes, le temps restant a été
+  utilisé à vérifier que ce correctif ne régresse rien plutôt qu'à une chasse
+  plus large sans piste concrète. Le vrai correctif de fond reste, comme noté
+  cinq nuits de suite maintenant, un suivi de flux de données réel plutôt
+  qu'un pattern-matching textuel sur le code source — hors de portée d'un
+  changement d'une nuit.
+
+**Vérifications exécutées** :
+```
+npm run typecheck   # 0 erreur
+npm test             # 378/378 verts (377 avant + 1 nouveau test, aucun ignoré/affaibli)
+npm run build         # web/dist généré, 314 kB / 98 kB gzip
+```
+Aucun script consommant du quota LLM n'a été lancé (bench/measure/report/e2e) :
+le changement est entièrement couvert par un test hors-ligne qui construit son
+propre bundle de contexte et n'appelle aucun modèle.
+
+**Note sur l'environnement de la nuit** : `node_modules` n'existait pas au
+démarrage (même situation que la nuit du 2026-08-21) — `npm ci` explicite
+nécessaire avant toute vérification. `origin/main` reste très en retard sur
+cette branche (2 commits contre l'historique cumulé complet ici) ; comme noté
+la nuit précédente, c'est un écart de process antérieur à ces nuits, hors du
+périmètre d'un correctif d'une nuit.
+
 ## 2026-08-21
 
 **Sujet** : quatrième variante du même faux négatif silencieux dans le

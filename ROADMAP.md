@@ -270,6 +270,29 @@ Cocher au fur et à mesure. Chaque phase correspond à un fichier
         variable passée en argument a RÉELLEMENT été construite à partir du
         champ d'identité, pas seulement nommée comme si — reste hors de
         portée d'un changement d'une nuit.
+        **[cinquième faux négatif de la même famille corrigé la nuit du
+        2026-08-22, voir NIGHTLY_LOG.md]** `extractCallArguments` cherchait le
+        nom de méthode et appariait les parenthèses sur `enclosingCode` BRUT,
+        commentaires compris — `stripComments` n'était appliqué qu'APRÈS, sur
+        le texte déjà extrait, dans `mentionsUserScope`. Un commentaire
+        `/* ... */` qui précède l'appel réel sur la MÊME ligne et mentionne le
+        nom de la méthode suivi de parenthèses (ex. `/* old: findOne({ id,
+        userId }) */ this.db.orders.findOne({ id })`) faisait trouver la
+        première occurrence du nom de méthode DANS LE COMMENTAIRE, puis
+        capturer les arguments DU COMMENTAIRE au lieu de l'appel réel. Un
+        commentaire mentionnant "userId" — une ancienne version filtrée
+        laissée en trace, une forme très courante en relecture ou en code
+        généré par IA — suffisait alors à déclencher `decisive_score: 0.1`
+        ("sain", coût nul) sur du texte qui n'est même pas du code exécuté.
+        Corrigé en remplaçant `enclosingCode` par une version qui préserve la
+        longueur et les sauts de ligne mais remplace chaque caractère de
+        commentaire par un espace (`stripCommentsPreserveLines`), AVANT la
+        recherche du nom de méthode et l'appariement de parenthèses. Le
+        `stripComments` existant ne convenait pas ici : il collabore un
+        commentaire multi-lignes en un seul espace, ce qui aurait décalé tous
+        les numéros de ligne utilisés pour retrouver la bonne ligne dans
+        `enclosingCode.split('\n')`. Reste heuristique par construction : le
+        suivi de flux de données réel reste le vrai correctif de fond.
       - Un seul type de vuln (IDOR). La structure `prompt`/`scanner`/`node`
         est copiable telle quelle ; seuls la grille et les directives changent.
       - Pas encore de parcours automatique de toutes les routes ni de

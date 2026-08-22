@@ -370,6 +370,68 @@ describe('Scanner déterministe (sans LLM)', () => {
     expect(report.has_user_scoped_data_access).toBe(false);
     expect(report.decisive_score).toBeNull();
   });
+
+  it("ne se laisse pas berner par un commentaire qui mentionne l'appel AVANT l'appel réel, sur la même ligne", () => {
+    // Cinquième variante de la même famille. `extractCallArguments` cherche
+    // le nom de méthode et fait l'appariement de parenthèses sur
+    // `enclosingCode` BRUT (commentaires compris) — `stripComments` n'est
+    // appliqué qu'APRÈS, sur le texte déjà extrait, dans `mentionsUserScope`.
+    // Un commentaire `/* ... */` qui précède l'appel réel sur la MÊME ligne
+    // et qui mentionne le nom de la méthode suivi de parenthèses (ex. un
+    // commentaire décrivant une ancienne version filtrée, très courant en
+    // relecture ou en code généré par IA) fait trouver la première occurrence
+    // du nom de méthode DANS LE COMMENTAIRE, puis capturer les arguments DU
+    // COMMENTAIRE au lieu de l'appel réel. Si le commentaire mentionne
+    // "userId" et que l'appel réel n'en a aucun, le verdict décisif "sain"
+    // tombe sur du texte qui n'est même pas du code exécuté.
+    const bundle = resolveContext(index, { route: '/orders/:id', httpMethod: 'GET' });
+    const trapCandidateSnapshot = [
+      'async retrieve(id: string) {',
+      '  return /* old: findOne({ id, userId }) */ this.db.orders.findOne({ id });',
+      '}',
+    ].join('\n');
+    const piege = {
+      ...bundle,
+      resolved_calls: [
+        {
+          call: 'retrieve',
+          injected_type: 'OrderService',
+          receiver: 'orderService',
+          line: 9,
+          resolution_status: 'resolved' as const,
+          reason: null,
+          candidates: [
+            {
+              class_name: 'OrderService',
+              file: 'trap.service.ts',
+              method: 'retrieve',
+              code_snapshot: trapCandidateSnapshot,
+              start_line: 9,
+              end_line: 11,
+            },
+          ],
+          resolved_calls: [
+            {
+              call: 'findOne',
+              injected_type: null,
+              receiver: 'this.db.orders',
+              line: 10,
+              resolution_status: 'not_found' as const,
+              reason: 'missing_context' as const,
+              candidates: [],
+              resolved_calls: [],
+              already_expanded: false,
+            },
+          ],
+          already_expanded: false,
+        },
+      ],
+    };
+    const report = scanForIdor(piege);
+    expect(report.has_unscoped_data_access).toBe(true);
+    expect(report.has_user_scoped_data_access).toBe(false);
+    expect(report.decisive_score).toBeNull();
+  });
 });
 
 describe('Node IDOR — les 3 cas imposés par PHASE_3 (logique, LLM simulé)', () => {

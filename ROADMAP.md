@@ -293,6 +293,26 @@ Cocher au fur et à mesure. Chaque phase correspond à un fichier
         les numéros de ligne utilisés pour retrouver la bonne ligne dans
         `enclosingCode.split('\n')`. Reste heuristique par construction : le
         suivi de flux de données réel reste le vrai correctif de fond.
+        **[sixième faux négatif de la même famille corrigé la nuit du
+        2026-08-23, voir NIGHTLY_LOG.md]** `extractCallArguments` retrouvait
+        le nom de méthode par `fromCallLine.indexOf(methodName)` : la
+        PREMIÈRE occurrence du nom sur la ligne, quel que soit l'appel
+        réellement examiné. Deux appels du MÊME nom sur la MÊME ligne — un
+        log d'audit filtré suivi de la vraie lecture non filtrée dans une
+        instruction compacte à une ligne (`this.db.logs.findOne({ userId });
+        return this.db.orders.findOne({ id });`) — faisaient hériter le
+        DEUXIÈME appel, celui qui ne filtre rien, des arguments du premier :
+        les deux sites se voyaient classés « scoped », `has_unscoped_data_access`
+        restait `false` et `decisive_score` tombait à 0.1 (« sain », coût nul)
+        sur une route réellement vulnérable. Corrigé en faisant compter,
+        pour chaque triplet (corps englobant, ligne, nom d'appel), combien
+        d'occurrences ont déjà été vues au fil du parcours des sites, et en
+        faisant chercher `extractCallArguments` la Nième occurrence du nom
+        sur la ligne plutôt que toujours la première. Repose sur une
+        hypothèse déjà implicite ailleurs dans ce scanner et non remise en
+        cause cette nuit : l'ordre de `resolved_calls` reflète l'ordre
+        d'apparition dans le code source. Reste heuristique par construction :
+        le suivi de flux de données réel reste le vrai correctif de fond.
       - Un seul type de vuln (IDOR). La structure `prompt`/`scanner`/`node`
         est copiable telle quelle ; seuls la grille et les directives changent.
       - Pas encore de parcours automatique de toutes les routes ni de

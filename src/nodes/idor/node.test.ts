@@ -432,6 +432,79 @@ describe('Scanner déterministe (sans LLM)', () => {
     expect(report.has_user_scoped_data_access).toBe(false);
     expect(report.decisive_score).toBeNull();
   });
+
+  it("ne se laisse pas berner par un DEUXIÈME appel du même nom sur la même ligne", () => {
+    // Sixième variante de la même famille. `extractCallArguments` retrouve le
+    // nom de méthode par `fromCallLine.indexOf(methodName)` : la PREMIÈRE
+    // occurrence du nom sur la ligne, quel que soit l'appel réellement en
+    // cours d'examen. Si DEUX appels partagent le même nom de méthode sur la
+    // MÊME ligne — un log d'audit filtré suivi de la vraie lecture non
+    // filtrée dans une instruction compacte à une ligne, forme courante d'un
+    // garde-fou "return tôt" ou d'un journal d'accès — les deux sites
+    // récupèrent les arguments du PREMIER appel. Le deuxième appel, celui qui
+    // lit réellement la ressource sans filtre, hérite à tort des arguments
+    // filtrés du premier et se voit classé "scoped" alors qu'il ne l'est pas
+    // du tout : `has_unscoped_data_access` reste `false` et `decisive_score`
+    // tombe à 0.1 ("sain", coût nul) sur une route réellement vulnérable.
+    const bundle = resolveContext(index, { route: '/orders/:id', httpMethod: 'GET' });
+    const trapCandidateSnapshot = [
+      'async retrieve(id: string, userId: string) {',
+      '  this.db.logs.findOne({ userId }); return this.db.orders.findOne({ id });',
+      '}',
+    ].join('\n');
+    const piege = {
+      ...bundle,
+      resolved_calls: [
+        {
+          call: 'retrieve',
+          injected_type: 'OrderService',
+          receiver: 'orderService',
+          line: 9,
+          resolution_status: 'resolved' as const,
+          reason: null,
+          candidates: [
+            {
+              class_name: 'OrderService',
+              file: 'trap.service.ts',
+              method: 'retrieve',
+              code_snapshot: trapCandidateSnapshot,
+              start_line: 9,
+              end_line: 11,
+            },
+          ],
+          resolved_calls: [
+            {
+              call: 'findOne',
+              injected_type: null,
+              receiver: 'this.db.logs',
+              line: 10,
+              resolution_status: 'not_found' as const,
+              reason: 'missing_context' as const,
+              candidates: [],
+              resolved_calls: [],
+              already_expanded: false,
+            },
+            {
+              call: 'findOne',
+              injected_type: null,
+              receiver: 'this.db.orders',
+              line: 10,
+              resolution_status: 'not_found' as const,
+              reason: 'missing_context' as const,
+              candidates: [],
+              resolved_calls: [],
+              already_expanded: false,
+            },
+          ],
+          already_expanded: false,
+        },
+      ],
+    };
+    const report = scanForIdor(piege);
+    expect(report.has_unscoped_data_access).toBe(true);
+    expect(report.has_user_scoped_data_access).toBe(true);
+    expect(report.decisive_score).toBeNull();
+  });
 });
 
 describe('Node IDOR — les 3 cas imposés par PHASE_3 (logique, LLM simulé)', () => {

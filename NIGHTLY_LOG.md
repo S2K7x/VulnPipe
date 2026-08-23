@@ -1,5 +1,89 @@
 # Journal des nuits
 
+## 2026-08-23
+
+**Sujet** : sixième variante du même faux négatif silencieux dans le scanner
+IDOR déterministe — cette fois `extractCallArguments` retrouvait toujours la
+PREMIÈRE occurrence du nom de méthode sur la ligne, sans distinguer DEUX
+appels du même nom sur la MÊME ligne.
+
+**Résultat** : PR ouverte (branche `claude/exciting-volta-s170so`).
+
+**Ce que j'ai appris** :
+- `main` et cette branche étaient déjà vertes au démarrage (378/378,
+  typecheck propre) : pas de suite rouge cette nuit, direct à la priorité 2
+  (bug réel et reproductible).
+- Les cinq correctifs précédents (2026-08-18 à 2026-08-22) avaient
+  progressivement bordé `extractCallArguments`/`mentionsUserScope` sur le
+  "où" chercher (avant/après l'appel), le "quoi" (préfixe de méthode,
+  identifiant entier plutôt que sous-chaîne) et le "dans quel texte"
+  (retirer les commentaires avant, pas après, la recherche du nom). Aucun
+  des cinq ne traitait le "combien de fois" : `fromCallLine.indexOf(methodName)`
+  cherche la PREMIÈRE occurrence du nom sur la ligne, sans savoir laquelle
+  des N occurrences correspond à L'APPEL EN COURS D'EXAMEN. Repéré en
+  relisant `scanForIdor` avec cette question précise plutôt que par lecture
+  exhaustive du fichier (le journal du 2026-08-22 notait explicitement ne
+  pas avoir cherché de sixième variante par ce moyen-là — j'ai pris une piste
+  différente : chercher ce que les cinq correctifs précédents n'avaient
+  jamais posé comme question).
+- Reproduit par le même patron que les cinq nuits précédentes : un
+  `resolved_calls` construit à la main, deux appels `findOne` sur la même
+  ligne (`this.db.logs.findOne({ userId }); return
+  this.db.orders.findOne({ id });`), le premier filtré (log d'audit), le
+  second non filtré (la vraie lecture de la ressource). Test écrit d'abord,
+  vérifié rouge (`has_unscoped_data_access: false`,
+  `has_user_scoped_data_access: true`, `decisive_score: 0.1`) via un script
+  jetable (`npx tsx` sur un probe dans le scratchpad) avant d'écrire le test
+  définitif.
+- Corrigé en faisant compter, pour chaque triplet (corps englobant, ligne,
+  nom d'appel), combien d'occurrences de ce triplet ont déjà été vues au fil
+  du parcours de `sites` dans `scanForIdor`, et en passant ce compteur à
+  `extractCallArguments` comme index d'occurrence à cibler (recherche
+  répétée avec `indexOf(methodName, searchFrom)` au lieu d'un simple
+  premier match). Ça repose sur une hypothèse déjà implicite ailleurs dans ce
+  fichier et non remise en cause cette nuit : l'ordre de `resolved_calls`
+  reflète l'ordre d'apparition dans le code source. Je ne l'ai pas vérifiée
+  contre le vrai indexeur Tree-sitter (hors du périmètre d'un correctif d'une
+  nuit sur le scanner) — seulement contre le patron déjà utilisé par les 6
+  tests de cette famille, où l'ordre du tableau construit à la main
+  correspond à l'ordre du texte.
+- Vérifié que les 6 correctifs précédents de cette famille restent verts
+  ensemble : 379/379, aucun n'a régressé.
+
+**À ne pas refaire** :
+- Ne pas ajouter d'index de colonne dans `ResolvedCall` "pour régler ça
+  proprement" sans en discuter d'abord : ce serait toucher l'indexeur/le
+  resolver des Phases 1-2, hors du périmètre d'un correctif d'une nuit sur
+  le scanner, et l'architecture de `ResolvedCall` (ligne seule, pas de
+  colonne) est une décision déjà en place, pas un oubli signalé comme tel.
+  Le compteur d'occurrences résout le cas réel sans y toucher.
+- Je n'ai pas cherché de septième variante par lecture manuelle exhaustive
+  du reste du scanner : comme les nuits précédentes, le temps restant a été
+  utilisé à vérifier que ce correctif ne régresse rien plutôt qu'à une
+  chasse plus large sans piste concrète. Le vrai correctif de fond reste, six
+  nuits de suite maintenant, un suivi de flux de données réel plutôt qu'un
+  pattern-matching textuel sur le code source — hors de portée d'un
+  changement d'une nuit. Si une septième variante existe, elle vivra
+  probablement dans le même angle mort : une hypothèse implicite sur la
+  FORME du texte source que le pattern-matching n'a jamais vérifiée.
+
+**Vérifications exécutées** :
+```
+npm run typecheck   # 0 erreur
+npm test             # 379/379 verts (378 avant + 1 nouveau test, aucun ignoré/affaibli)
+npm run build         # web/dist généré, 313,99 kB / 98,31 kB gzip
+```
+Aucun script consommant du quota LLM n'a été lancé (bench/measure/report/e2e) :
+le changement est entièrement couvert par un test hors-ligne qui construit son
+propre bundle de contexte et n'appelle aucun modèle.
+
+**Note sur l'environnement de la nuit** : `node_modules` n'existait pas au
+démarrage (même situation que les nuits précédentes) — `npm ci` explicite
+nécessaire avant toute vérification. Contrairement aux nuits du 2026-08-20 au
+2026-08-22, `origin/main` est ici directement à jour avec la branche de
+départ (`d6acaeb`, PR #13 déjà fusionnée) : rien à signaler côté écart de
+branche cette fois.
+
 ## 2026-08-22
 
 **Sujet** : cinquième variante du même faux négatif silencieux dans le

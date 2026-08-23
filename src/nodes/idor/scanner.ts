@@ -176,12 +176,24 @@ function collectDataAccessSites(
  * détection et fait basculer la route en zone grise plutôt qu'en verdict
  * "sain" — direction sûre : dans le doute, on demande, on ne conclut jamais
  * à tort qu'une route est protégée.
+ *
+ * Sixième bug corrigé (voir NIGHTLY_LOG.md) : `fromCallLine.indexOf(methodName)`
+ * retrouve toujours la PREMIÈRE occurrence du nom sur la ligne, quel que soit
+ * l'appel réellement examiné. Deux appels du même nom sur la MÊME ligne (un
+ * log d'audit filtré suivi de la vraie lecture non filtrée dans une
+ * instruction compacte à une ligne, `this.db.logs.findOne({ userId });
+ * return this.db.orders.findOne({ id });`) faisaient hériter le DEUXIÈME
+ * appel — celui qui ne filtre rien — des arguments du PREMIER. `occurrence`
+ * (0-indexé, position de cet appel parmi les appels de même nom sur cette
+ * ligne, dans l'ordre où le resolver les liste) sélectionne la bonne
+ * occurrence au lieu de toujours la première.
  */
 function extractCallArguments(
   enclosingCode: string,
   enclosingStartLine: number,
   callLine: number,
-  methodName: string
+  methodName: string,
+  occurrence: number
 ): string {
   const lines = stripCommentsPreserveLines(enclosingCode).split('\n');
   const relativeIndex = callLine - enclosingStartLine;
@@ -190,8 +202,14 @@ function extractCallArguments(
   if (relativeIndex < 0 || relativeIndex >= lines.length) return '';
   const fromCallLine = lines.slice(relativeIndex).join('\n');
 
-  const nameIndex = fromCallLine.indexOf(methodName);
-  if (nameIndex === -1) return '';
+  let nameIndex = -1;
+  let searchFrom = 0;
+  for (let seen = 0; seen <= occurrence; seen++) {
+    const found = fromCallLine.indexOf(methodName, searchFrom);
+    if (found === -1) return '';
+    nameIndex = found;
+    searchFrom = found + methodName.length;
+  }
   const openParen = fromCallLine.indexOf('(', nameIndex);
   if (openParen === -1) return '';
 
@@ -327,8 +345,18 @@ export function scanForIdor(
   let unscoped = false;
   let scoped = false;
 
+  // Compte, par (corps englobant, ligne, nom d'appel), combien d'occurrences
+  // de ce même triplet ont déjà été vues — deux appels du même nom sur la
+  // même ligne partagent la ligne et le nom mais désignent des occurrences
+  // différentes du texte source (voir NIGHTLY_LOG.md).
+  const occurrenceCounts = new Map<string, number>();
+
   for (const entry of sites) {
     if (!isDataAccess(entry.call.call)) continue;
+
+    const occurrenceKey = `${entry.enclosingCode} ${entry.call.line} ${entry.call.call}`;
+    const occurrence = occurrenceCounts.get(occurrenceKey) ?? 0;
+    occurrenceCounts.set(occurrenceKey, occurrence + 1);
 
     // Le filtre se juge sur les ARGUMENTS de l'appel lui-même, pas sur une
     // fenêtre de lignes voisines — sinon un `req.user.id` de log après
@@ -338,7 +366,8 @@ export function scanForIdor(
       entry.enclosingCode,
       entry.enclosingStartLine,
       entry.call.line,
-      entry.call.call
+      entry.call.call,
+      occurrence
     );
     if (mentionsUserScope(callArguments)) {
       scoped = true;
